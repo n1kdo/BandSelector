@@ -9839,7 +9839,7 @@
 				)
 			)
 		)
-		(property "Footprint" "SWITCHCRAFT_RAPC722X"
+		(property "Footprint" "Library:SWITCHCRAFT_RAPC722X"
 			(at 144.78 140.97 0)
 			(effects
 				(font
