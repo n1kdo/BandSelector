@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/html" lang="en">
+<!-- Copyright 2024, J. B. Otterson N1KDO. -->
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=0.75, minimum-scale=0.6, maximum-scale=1.5">
+    <title>Antenna Switch Controller</title>
+</head>
+<style>
+    body {
+        background-color: #ddd;
+        border-style: double;
+        font-family: sans-serif;
+        font-size: 10pt;
+        margin: 0;
+        height: 350px;
+        width: 500px;
+    }
+
+    .antenna_selections {
+        border: solid 1px black;
+        margin: auto;
+        width: fit-content;
+    }
+
+    .author {
+        font-size: 8pt;
+        font-weight: bold;
+        text-align: right;
+        position: absolute;
+        top: 340px;
+        left: 400px;
+        width: 100px;
+    }
+
+    .author a:link, .author a:visited, .author a:hover {
+        color: black;
+        text-decoration: none;
+    }
+
+    .bottom_links {
+        font-size: 8pt;
+        font-weight: bold;
+        color: black;
+        text-align: left;
+        position: absolute;
+        top: 340px;
+    }
+
+    .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
+        color: blue;
+        text-decoration: none;
+        padding-right: 4px;
+    }
+
+    fieldset {
+        margin: 1px;
+        padding: 2px;
+    }
+
+    .header {
+        text-align: center;
+        font-size: 24pt;
+        font-weight: bold;
+        border-bottom: 24px;
+    }
+    
+    div.refresh_radio {
+        margin: 10px 100px;
+        text-align: left;
+        width: auto;
+    }
+
+    .antenna_name {
+        font-weight: bold;
+        text-align: center;
+        width: 10em;
+    }
+
+    .radio_name {
+        font-weight: bold;
+        text-align: center;
+        width: 8em;
+    }
+
+    .selected {
+        color: red;
+        padding-right: 4px;
+    }
+
+    .table-heading {
+        font-weight: bold;
+        text-align: center;
+        text-decoration: underline;
+    }
+</style>
+<!--suppress JSUnusedLocalSymbols -->
+<script>
+    let auto_updates = 0;
+    let update_secs = 0;
+    let update_timeout = 0;
+
+    function page_load() {
+        get_status();
+    }
+
+    function select_antenna(radio, antenna) {
+        auto_updates = 5;
+        let antenna_request = {};
+        antenna_request.radio = radio;
+        antenna_request.antenna = antenna;
+        payload = JSON.stringify(antenna_request);
+        //alert("select antenna for radio " + payload);
+
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("no xmlhttp -- try a newer browser?");
+            return;
+        }
+
+        xmlHttp.onreadystatechange = function () {
+            if ((xmlHttp.readyState === 4) && (xmlHttp.status !== 200)) {
+                alert(xmlHttp.responseText);
+            }
+        }
+
+        xmlHttp.open("POST",  "/api/select_antenna", true);
+        xmlHttp.setRequestHeader("Content-Type", "application/json");
+        xmlHttp.send(payload);
+        // update the UI after a short period
+        if (update_timeout !== 0) {
+            clearTimeout(update_timeout)
+            update_timeout = 0;
+        }
+        update_timeout = setTimeout(get_status, 500);
+      }
+
+    function process_get_status_response(message) {
+        let status_data = JSON.parse(message);
+        let antenna_names = status_data.antenna_names;
+        let radio_names = status_data.radio_names;
+        let radio_1_antenna = status_data.radio_1_antenna;
+        let radio_2_antenna = status_data.radio_2_antenna;
+        document.getElementById("r1_name").innerHTML = radio_names[0];
+        document.getElementById("r2_name").innerHTML = radio_names[1];
+        for (let i = 0; i < 8; i++) {
+            let element_name = "a" + (i + 1) + "_name";
+            document.getElementById(element_name).innerHTML = antenna_names[i];
+            element_name = "r1_a" + (i + 1) + "_radio";
+            document.getElementById(element_name).checked = ((i + 1) === radio_1_antenna);
+            element_name = "r2_a" + (i + 1) + "_radio";
+            document.getElementById(element_name).checked = ((i + 1) === radio_2_antenna);
+        }
+
+        let button_secs = update_secs;
+        if (auto_updates > 0) {
+            update_timeout = setTimeout(get_status, 1000);
+            button_secs = 1;
+            auto_updates--;
+        } else {
+            if (update_secs > 0) {
+                update_timeout = setTimeout(get_status, update_secs * 1000);
+            }
+        }
+
+        // set the radio buttons for automatic updating
+        document.getElementById('refresh_radio_0').checked = (button_secs === 0);
+        document.getElementById('refresh_radio_1').checked = (button_secs === 1);
+        document.getElementById('refresh_radio_5').checked = (button_secs === 5);
+    }
+
+    function get_status() {
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_get_status_response(xmlHttp.responseText);
+            }
+        }
+        xmlHttp.open("GET", "/api/status", true);
+        xmlHttp.send();
+    }
+
+    function set_refresh(secs) {
+        update_secs = secs
+        if (update_secs === 0) {
+            if (update_timeout !== 0) {
+                clearTimeout(update_timeout)
+                update_timeout = 0;
+            }
+        } else {
+            get_status();
+        }
+    }
+
+</script>
+<body onload="page_load()">
+<div class="header">Antenna Switch Controller</div>
+<div class="antenna_selections">
+    <table>
+        <tr>
+            <td class="table-heading">Radio</td>
+            <td>&nbsp;</td>
+            <td class="table-heading">Antenna</td>
+            <td>&nbsp;</td>
+            <td class="table-heading">Radio</td></tr>
+        <tr>
+            <td rowspan="8" class="radio_name" id="r1_name"></td>
+            <td><input type="radio" name="r1_a1_radio" id="r1_a1_radio" value="r1a1" onclick="select_antenna(1, 1)"></td>
+            <td class="antenna_name" id="a1_name"></td>
+            <td><input type="radio" name="r2_a1_radio" id="r2_a1_radio" value="r1a2" onclick="select_antenna(2, 1)"></td>
+            <td rowspan="8" class="radio_name" id="r2_name"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a2_radio" id="r1_a2_radio" value="r1a2" onclick="select_antenna(1, 2)"></td>
+            <td class="antenna_name" id="a2_name"></td>
+            <td><input type="radio" name="r1_a2_radio" id="r2_a2_radio" value="r2a2" onclick="select_antenna(2, 2)"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a3_radio" id="r1_a3_radio" value="r1a3" onclick="select_antenna(1, 3)"></td>
+            <td class="antenna_name" id="a3_name"></td>
+            <td><input type="radio" name="r1_a3_radio" id="r2_a3_radio" value="r2a3" onclick="select_antenna(2, 3)"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a4_radio" id="r1_a4_radio" value="r1a4" onclick="select_antenna(1, 4)"></td>
+            <td class="antenna_name" id="a4_name"></td>
+            <td><input type="radio" name="r1_a4_radio" id="r2_a4_radio" value="r2a4" onclick="select_antenna(2, 4)"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a5_radio" id="r1_a5_radio" value="r1a5" onclick="select_antenna(1, 5)"></td>
+            <td class="antenna_name" id="a5_name"></td>
+            <td><input type="radio" name="r1_a5_radio" id="r2_a5_radio" value="r2a5" onclick="select_antenna(2, 5)"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a6_radio" id="r1_a6_radio" value="r1a6" onclick="select_antenna(1, 6)"></td>
+            <td class="antenna_name" id="a6_name"></td>
+            <td><input type="radio" name="r1_a6_radio" id="r2_a6_radio" value="r2a6" onclick="select_antenna(2, 6)"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a7_radio" id="r1_a7_radio" value="r1a7" onclick="select_antenna(1, 7)"></td>
+            <td class="antenna_name" id="a7_name"></td>
+            <td><input type="radio" name="r1_a7_radio" id="r2_a7_radio" value="r2a7" onclick="select_antenna(2, 7)"></td>
+        </tr>
+        <tr>
+            <td><input type="radio" name="r1_a8_radio" id="r1_a8_radio" value="r1a8" onclick="select_antenna(1, 8)"></td>
+            <td class="antenna_name" id="a8_name"></td>
+            <td><input type="radio" name="r1_a8_radio" id="r2_a8_radio" value="r2a8" onclick="select_antenna(2, 8)"></td>
+        </tr>
+    </table>
+</div>
+<div class="refresh_radio">
+    <fieldset>
+        <legend>Auto-Refresh</legend>
+        <input type="radio" name="refresh_radio" id="refresh_radio_0" value="0" onclick="set_refresh(0)"/>
+        <label for="refresh_radio_0">Never&nbsp;&nbsp;&nbsp;&nbsp;</label>
+        <input type="radio" name="refresh_radio" id="refresh_radio_1" value="1" onclick="set_refresh(1)"/>
+        <label for="refresh_radio_1">1 second&nbsp;&nbsp;&nbsp;&nbsp;</label>
+        <input type="radio" name="refresh_radio" id="refresh_radio_5" value="5" onclick="set_refresh(5)"/>
+        <label for="refresh_radio_5">5 seconds</label>
+    </fieldset>
+</div>
+<div>
+    <div class="bottom_links">
+        <span class="selected">Switch</span>
+        <a href="radios.html">Radios</a>
+        <a href="antennas.html">Antennas</a>
+        <a href="network.html">Network</a>
+        <a href="files.html">Files</a>
+    </div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20240906</div>
+</div>
+</body>
+</html>

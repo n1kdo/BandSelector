@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<!--suppress JSUnusedLocalSymbols -->
+<html xmlns="http://www.w3.org/1999/html" lang="en">
+<!-- Copyright 2024, J. B. Otterson N1KDO. -->
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
+        <title>Configure Radios</title>
+    </head>
+    <style>
+        .author {
+            font-size: 8pt;
+            font-weight: bold;
+            text-align: right;
+            position: absolute;
+            left: 410px;
+            top: 340px;
+            width: 90px;
+        }
+
+        .author a:link, .author a:visited, .author a:hover {
+            color: black;
+            text-decoration: none;
+        }
+
+        body {
+            background-color: #ddd;
+            border-style: double;
+            font-family: sans-serif;
+            margin: 0;
+            height: 350px;
+            width: 500px;
+        }
+
+        .bottom_links {
+            font-size: 8pt;
+            font-weight: bold;
+            color: black;
+            text-align: left;
+            position: absolute;
+            top: 340px;
+        }
+
+        .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
+            color: blue;
+            text-decoration: none;
+            padding-right: 4px;
+        }
+
+        .centered {
+            text-align: center;
+        }
+
+        form {
+            display: table;
+            margin-top: 2em;
+            margin-bottom: 2em;
+        }
+
+        form p {
+            display: table-row;
+            line-height: 1.5em;
+        }
+
+        .setup_form {
+            padding: 0 50px;
+            width: 400px;
+        }
+
+        .header {
+            text-align: center;
+            font-size: 24pt;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+
+        input {
+            display: table-cell;
+            font-family: inherit;
+        }
+
+        input[type=button] {
+            display: inline-grid;
+            font-weight: bold;
+            font-size: 12pt;
+            width: 5em;
+        }
+
+        label {
+            display: table-cell;
+            font-size: 10pt;
+            padding: 0 5px 0 0;
+            text-align: right;
+            width: 40%;
+        }
+
+        .selected {
+            color: red;
+            padding-right: 4px;
+        }
+
+    </style>
+    <script>
+
+        function page_load() {
+            get_config();
+        }
+
+        function get_config() {
+            let xmlHttp = new XMLHttpRequest();
+            if (xmlHttp == null) {
+                alert("no XMLHttpRequest! what browser?");
+                return;
+            }
+            xmlHttp.onreadystatechange = function () {
+                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                    process_get_config_response(xmlHttp.responseText);
+                }
+            }
+            xmlHttp.open("GET", "/api/config", true);
+            xmlHttp.send();
+        }
+
+        function process_get_config_response(message) {
+            let config = JSON.parse(message);
+            document.getElementById("radio_1_name").value = config.radio_names[0];
+            document.getElementById("radio_2_name").value = config.radio_names[1];
+        }
+
+        function set_config() {
+            let radio_1_name = document.getElementById("radio_1_name").value;
+            let radio_2_name = document.getElementById("radio_2_name").value;
+            let config = {};
+            config.radio_names = [radio_1_name, radio_2_name];
+            let payload = JSON.stringify(config);
+            let xmlHttp = new XMLHttpRequest();
+            if (xmlHttp == null) {
+                alert("get a better browser!");
+                return;
+            }
+            xmlHttp.onreadystatechange = function () {
+                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                    process_set_config_response(xmlHttp.responseText);
+                }
+            }
+            xmlHttp.open("POST", "/api/config", true);
+            xmlHttp.setRequestHeader("Content-Type", "application/json");
+            xmlHttp.send(payload);
+        }
+
+        function process_set_config_response(message) {
+            // alert(message);
+        }
+
+    </script>
+    <body onload="page_load()">
+        <div class="header">Configure Radios</div>
+        <div class="setup_form">
+            <form>
+                <p>
+                    <label for="radio_1_name">Radio 1 Name:</label>
+                    <input type="text" id="radio_1_name" maxlength="16">
+                </p>
+                <p>
+                    <label for="radio_2_name">Radio 2 Name:</label>
+                    <input type="text" id="radio_2_name" maxlength="16">
+                </p>
+            </form>
+            <div class="centered">
+                <input type="button" id="reset_button" value="Reset" title="Reload Configuration"
+                       onclick="get_config()"/>
+                <input type="button" id="apply_button" value="Apply" title="Save Configuration" onclick="set_config()"/>
+            </div>
+        </div>
+        <div class="row">
+            <div class="bottom_links">
+                <a href="switch.html">Switch</a>
+                <span class="selected">Radios</span>
+                <a href="antennas.html">Antennas</a>
+                <a href="network.html">Network</a>
+                <a href="files.html">Files</a>
+            </div>
+            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20240906</div>
+        </div>
+    </body>
+</html>
