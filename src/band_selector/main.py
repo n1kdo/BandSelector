@@ -68,19 +68,38 @@ BAND_OTHER1_MASK = 0x2000  # not used
 BAND_OTHER2_MASK = 0x4000  # not used
 BAND_OTHER3_MASK = 0x8000  # not used
 
-# I/O setup
+# other I/O setup
 onboard = machine.Pin('LED', machine.Pin.OUT, value=1)  # turn on right away
 morse_led = machine.Pin(0, machine.Pin.OUT, value=0)  # status/morse code LED on GPIO0 / pin 1
 reset_button = machine.Pin(1, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO1 / pin 2
-# including LCD display
-lcd = GpioLcd(rs_pin=machine.Pin(8, machine.Pin.OUT, value=0),
-              rw_pin=machine.Pin(7, machine.Pin.OUT, value=0),
-              enable_pin=machine.Pin(6, machine.Pin.OUT, value=0),
-              d4_pin=machine.Pin(5, machine.Pin.OUT, value=0),
-              d5_pin=machine.Pin(4, machine.Pin.OUT, value=0),
-              d6_pin=machine.Pin(3, machine.Pin.OUT, value=0),
-              d7_pin=machine.Pin(2, machine.Pin.OUT, value=0),
-              num_lines=2, num_columns=20)
+
+# pushbuttons on display board on GPIO10-13
+sw1 = machine.Pin(13, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO13 / pin 17
+sw2 = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO12 / pin 16
+sw3 = machine.Pin(11, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO11 / pin 15
+sw4 = machine.Pin(10, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO10 / pin 14
+
+# LCD display on display board on GPIO2-9
+lcd = GpioLcd(backlight_pin=machine.Pin(9),
+              rs_pin=machine.Pin(8),
+              rw_pin=machine.Pin(7),
+              enable_pin=machine.Pin(6),
+              d4_pin=machine.Pin(5),
+              d5_pin=machine.Pin(4),
+              d6_pin=machine.Pin(3),
+              d7_pin=machine.Pin(2),
+              num_lines=2,
+              num_columns=20)
+
+# radio interface on GPIO15-22
+auxbus = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)  # AUXBUS data input on GPIO15
+inhibit = machine.Pin(16, machine.Pin.OUT, value=0)  # TX inhibit control on GPIO16
+band0 = machine.Pin(17, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND0 data input on GPIO17
+band1 = machine.Pin(18, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND1 data input on GPIO18
+band2 = machine.Pin(19, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND2 data input on GPIO19
+band3 = machine.Pin(20, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND3 data input on GPIO20
+poweron = machine.Pin(21, machine.Pin.IN, machine.Pin.PULL_UP)  # power on control on GPIO21
+powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
 
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
@@ -401,12 +420,10 @@ async def main():
     tcp_server = asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
 
     reset_button_pressed_count = 0
-    four_count = 0
     last_message = ''
     while keep_running:
         if upython:
             await asyncio.sleep(0.25)
-            four_count += 1
             pressed = reset_button.value() == 0
             if pressed:
                 reset_button_pressed_count += 1
@@ -419,13 +436,16 @@ async def main():
                 config['ap_mode'] = ap_mode
                 save_config(config)
                 keep_running = False
-            if four_count >= 3:  # check for new message every one second
-                if picow_network.get_message() != last_message:
-                    last_message = picow_network.get_message()
-                    morse_code_sender.set_message(last_message)
-                    lcd.clear()
-                    lcd.putstr(f'Network status:\n{last_message}')
-                four_count = 0
+            if picow_network.get_message() != last_message:
+                last_message = picow_network.get_message()
+                morse_code_sender.set_message(last_message)
+            buts = ('1 ' if not sw1.value() else '  ') + \
+                   ('2 ' if not sw2.value() else '  ') + \
+                   ('3 ' if not sw3.value() else '  ') + \
+                   ('4 ' if not sw4.value() else '  ')
+            #lcd.clear()
+            lcd.move_to(0,0)
+            lcd.putstr(f'buttons : {buts:>10s}\n{last_message:^20s}\n')
         else:
             await asyncio.sleep(10.0)
     if upython:

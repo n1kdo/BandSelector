@@ -44,7 +44,6 @@ FILES_LIST = [
     # do not need not_machine.py on real hardware
     'picow_network.py',
     'pico_gpio_lcd.py',
-    'pico_gpio_lcd.py',
     'utils.py',
     'content/favicon.ico',
     'content/files.html',
@@ -234,6 +233,8 @@ def main():
     args = parser.parse_args()
     if 'force' in args:
         force = args.force
+    else:
+        force = False
     if 'port' in args and args.port is not None:
         picow_port = args.port
     else:
