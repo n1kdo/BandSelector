@@ -36,14 +36,15 @@ SRC_DIR = '../band_selector/'
 FILES_LIST = [
     'content/',
     'data/',
+    'alcd.py',
     'http_server.py',
-    'lcd_api.py',
+    #'lcd_api.py',
     'main.py',
     'micro_logging.py',
     'morse_code.py',
     # do not need not_machine.py on real hardware
     'picow_network.py',
-    'pico_gpio_lcd.py',
+    #'pico_gpio_lcd.py',
     'utils.py',
     'content/favicon.ico',
     'content/files.html',

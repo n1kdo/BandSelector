@@ -31,13 +31,13 @@ __version__ = '0.0.1'
 
 import json
 
+from alcd import LCD
 from http_server import (HttpServer,
                          api_rename_file_callback,
                          api_remove_file_callback,
                          api_upload_file_callback,
                          api_get_files_callback)
 from morse_code import MorseCode
-from pico_gpio_lcd import GpioLcd
 from picow_network import PicowNetwork
 from utils import milliseconds, upython, safe_int
 import micro_logging as logging
@@ -79,17 +79,10 @@ sw2 = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input 
 sw3 = machine.Pin(11, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO11 / pin 15
 sw4 = machine.Pin(10, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO10 / pin 14
 
-# LCD display on display board on GPIO2-9
-lcd = GpioLcd(backlight_pin=machine.Pin(9),
-              rs_pin=machine.Pin(8),
-              rw_pin=machine.Pin(7),
-              enable_pin=machine.Pin(6),
-              d4_pin=machine.Pin(5),
-              d5_pin=machine.Pin(4),
-              d6_pin=machine.Pin(3),
-              d7_pin=machine.Pin(2),
-              num_lines=2,
-              num_columns=20)
+# LCD display on display board on GPIO pins
+# RW is hardwired to GPIO7,
+machine.Pin(7, machine.Pin.OUT, value=0)
+lcd = LCD((8, 6, 5, 4, 3, 2), cols=20)
 
 # radio interface on GPIO15-22
 auxbus = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)  # AUXBUS data input on GPIO15
@@ -443,9 +436,8 @@ async def main():
                    ('2 ' if not sw2.value() else '  ') + \
                    ('3 ' if not sw3.value() else '  ') + \
                    ('4 ' if not sw4.value() else '  ')
-            #lcd.clear()
-            lcd.move_to(0,0)
-            lcd.putstr(f'buttons : {buts:>10s}\n{last_message:^20s}\n')
+            lcd[0] = f'buttons : {buts:>10s}'
+            lcd[1] = f'{last_message:^20s}'
         else:
             await asyncio.sleep(10.0)
     if upython:
