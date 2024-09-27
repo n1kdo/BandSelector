@@ -32,6 +32,7 @@ __version__ = '0.0.1'
 import json
 
 from alcd import LCD
+from button import Button
 from http_server import (HttpServer,
                          api_rename_file_callback,
                          api_remove_file_callback,
@@ -39,6 +40,7 @@ from http_server import (HttpServer,
                          api_get_files_callback)
 from morse_code import MorseCode
 from picow_network import PicowNetwork
+from ringbuf_queue import RingbufQueue
 from utils import milliseconds, upython, safe_int
 import micro_logging as logging
 
@@ -68,6 +70,9 @@ BAND_OTHER1_MASK = 0x2000  # not used
 BAND_OTHER2_MASK = 0x4000  # not used
 BAND_OTHER3_MASK = 0x8000  # not used
 
+# set up message queue
+msgq = RingbufQueue(32)
+
 # other I/O setup
 onboard = machine.Pin('LED', machine.Pin.OUT, value=1)  # turn on right away
 morse_led = machine.Pin(0, machine.Pin.OUT, value=0)  # status/morse code LED on GPIO0 / pin 1
@@ -79,21 +84,27 @@ sw2 = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input 
 sw3 = machine.Pin(11, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO11 / pin 15
 sw4 = machine.Pin(10, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO10 / pin 14
 
+Button(sw1, msgq, (1, 0), (1, 1))  # SW1
+Button(sw2, msgq, (2, 0), (2, 1))
+Button(sw3, msgq, (3, 0), (3, 1))
+Button(sw4, msgq, (4, 0), (4, 1))  # SW 4
+
 # LCD display on display board on GPIO pins
 # RW is hardwired to GPIO7,
 machine.Pin(7, machine.Pin.OUT, value=0)
 lcd = LCD((8, 6, 5, 4, 3, 2), cols=20)
 
 # radio interface on GPIO15-22
-auxbus = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)  # AUXBUS data input on GPIO15
+auxbus = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)  # AUXBUS data input on GPIO15 (maybe)
 inhibit = machine.Pin(16, machine.Pin.OUT, value=0)  # TX inhibit control on GPIO16
+
 band0 = machine.Pin(17, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND0 data input on GPIO17
 band1 = machine.Pin(18, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND1 data input on GPIO18
 band2 = machine.Pin(19, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND2 data input on GPIO19
 band3 = machine.Pin(20, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND3 data input on GPIO20
 poweron = machine.Pin(21, machine.Pin.IN, machine.Pin.PULL_UP)  # power on control on GPIO21
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
-
+Button(powersense, msgq, (10, 0), (10, 1))
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
 
@@ -368,6 +379,12 @@ async def serve_serial_client(reader, writer):
     logging.info(f'client disconnected, elapsed time {(tc - t0) / 1000.0:6.3f} seconds', 'main:serve_serial_client')
 
 
+async def msg_loop(q):
+    while True:
+        msg = await q.get()
+        logging.info(f'msg received: {msg}')
+        # await asyncio.sleep(10)
+
 async def main():
     global antennas_selected, keep_running, config, restart
     antennas_selected = read_antennas_selected()
@@ -393,8 +410,7 @@ async def main():
         network_keepalive_task = asyncio.create_task(picow_network.keep_alive())
         morse_code_sender = MorseCode(morse_led)
         morse_sender_task = asyncio.create_task(morse_code_sender.morse_sender())
-
-
+        msg_loop_task = asyncio.create_task(msg_loop(msgq))
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
     http_server.add_uri_callback('/', slash_callback)
@@ -432,10 +448,12 @@ async def main():
             if picow_network.get_message() != last_message:
                 last_message = picow_network.get_message()
                 morse_code_sender.set_message(last_message)
-            buts = ('1 ' if not sw1.value() else '  ') + \
-                   ('2 ' if not sw2.value() else '  ') + \
-                   ('3 ' if not sw3.value() else '  ') + \
-                   ('4 ' if not sw4.value() else '  ')
+                await msgq.put(last_message)
+            buts = 'no buts'
+            #buts = ('1 ' if not sw1.value() else '  ') + \
+            #       ('2 ' if not sw2.value() else '  ') + \
+            #       ('3 ' if not sw3.value() else '  ') + \
+            #       ('4 ' if not sw4.value() else '  ')
             lcd[0] = f'buttons : {buts:>10s}'
             lcd[1] = f'{last_message:^20s}'
         else:
