@@ -1,11 +1,11 @@
 #
 # picow_network.py -- Raspberry Pi Pico W connect to Wifi Network.
-# this is pulled out to it's own module because it is used widely.
+# this is pulled out to its own module because it is used widely.
 #
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, J. B. Otterson N1KDO.'
-__version__ = '0.9.2'
+__version__ = '0.9.3'
 
 #
 # Copyright 2024, J. B. Otterson N1KDO.
@@ -33,8 +33,11 @@ __version__ = '0.9.2'
 from utils import upython
 
 if upython:
+    # noinspection PyUnresolvedReferences
     import machine
+    # noinspection PyUnresolvedReferences,PyPackageRequirements
     import network
+    # noinspection PyUnresolvedReferences
     import uasyncio as asyncio
     import micro_logging as logging
 else:
@@ -55,8 +58,13 @@ class PicowNetwork:
         network.STAT_CONNECT_FAIL: 'failed due to other problems',  # -1
     }
 
-    def __init__(self, config: dict, default_ssid='PICO-W', default_secret='PICO-W') -> None:
+    def __init__(self,
+                 config: dict,
+                 default_ssid='PICO-W',
+                 default_secret='PICO-W',
+                 message_func=None) -> None:
         self.keepalive = False
+        self.message_func = message_func
         self.ssid = config.get('SSID') or ''
         if len(self.ssid) == 0 or len(self.ssid) > 64:
             self.ssid = default_ssid
@@ -77,15 +85,22 @@ class PicowNetwork:
         self.netmask = config.get('netmask')
         self.gateway = config.get('gateway')
         self.dns_server = config.get('dns_server')
-
-        self.message='INIT'
+        self.message = ''
+        self.set_message('Network INIT')
         self.wlan = None
+        asyncio.create_task(self.keep_alive())
+
+    async def set_message(self, message: str) -> None:
+        self.message = message
+        if self.message_func:
+            await self.message_func(self.message)
 
     async def connect(self):
         network.country('US')
         sleep = asyncio.sleep
 
         if self.access_point_mode:
+            await self.set_message('Starting setup WLAN...')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
             self.wlan = network.WLAN(network.AP_IF)
             self.wlan.deinit()
@@ -100,9 +115,11 @@ class PicowNetwork:
             onboard.on()
 
             try:
+                await self.set_message(f'setting hostname "{self.hostname}"')
                 logging.info(f'  setting hostname "{self.hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self.hostname)
             except ValueError:
+                await self.set_message('Failed to set hostname.')
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
 
             #
@@ -122,6 +139,7 @@ class PicowNetwork:
             logging.info(f'  ssid={self.wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ifconfig={self.wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
         else:
+            await self.set_message('Connecting to WLAN...')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
             self.wlan = network.WLAN(network.STA_IF)
             self.wlan.disconnect()
@@ -135,9 +153,11 @@ class PicowNetwork:
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
             onboard.on()
             try:
+                await self.set_message(f'setting hostname\n{self.hostname}')
                 logging.info(f'...setting hostname "{self.hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self.hostname)
             except ValueError:
+                await self.set_message('Failed to set hostname.')
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
             self.wlan.active(True)
             self.wlan.config(pm=self.wlan.PM_NONE)  # disable power save, this is a server.
@@ -163,8 +183,10 @@ class PicowNetwork:
                 logging.info(f'...configuring network with {self.wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
 
             max_wait = 15
-            # wl_status = self.wlan.status()
+            wl_status = 0
+            st = ''
             logging.info(f'...connecting to "{self.ssid}"...', 'PicowNetwork:connect_to_network')
+            await self.set_message(f'Connecting to\n{self.ssid}')
             self.wlan.connect(self.ssid, self.secret)
             last_wl_status = -9
             while max_wait > 0:
@@ -179,20 +201,28 @@ class PicowNetwork:
                 await sleep(1)
             if wl_status != network.STAT_GOT_IP:
                 logging.warning(f'...network connect timed out: {wl_status}', 'PicowNetwork:connect_to_network')
-                self.message = f'Error {wl_status} {st} '
+                await self.set_message(f'Error {wl_status}\n{st}')
                 return None
             logging.info(f'...connected: {self.wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
 
         onboard.on()  # turn on the LED, WAN is up.
         wl_config = self.wlan.ipconfig('addr4')  # get use str param name.
         ip_address = wl_config[0]
-        self.message = f'AP {ip_address} ' if self.access_point_mode else f'{ip_address} '
+        if self.access_point_mode:
+            msg = f'Access Point...\n{ip_address}'
+        else:
+            msg = f'IP Address:\n{ip_address}'
+        await self.set_message(msg)
         return
 
     def ifconfig(self):
         return self.wlan.ifconfig()
 
     def status(self):
+        """
+        get the status of the wlan
+        :return:
+        """
         keys = ['antenna',
                 'channel',
                 'hostname',

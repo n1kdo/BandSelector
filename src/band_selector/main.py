@@ -33,6 +33,7 @@ import json
 
 from alcd import LCD
 from button import Button
+from fourbits import FourBits
 from http_server import (HttpServer,
                          api_rename_file_callback,
                          api_remove_file_callback,
@@ -102,6 +103,8 @@ band0 = machine.Pin(17, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND0 data input
 band1 = machine.Pin(18, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND1 data input on GPIO18
 band2 = machine.Pin(19, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND2 data input on GPIO19
 band3 = machine.Pin(20, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND3 data input on GPIO20
+
+band_detector = FourBits([band3, band2, band1, band0], msgq, (100, 0))
 poweron = machine.Pin(21, machine.Pin.IN, machine.Pin.PULL_UP)  # power on control on GPIO21
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
 Button(powersense, msgq, (10, 0), (10, 1))
@@ -110,41 +113,14 @@ CONTENT_DIR = 'content/'
 
 PORT_SETTINGS_FILE = 'data/port_settings.txt'
 
-DEFAULT_SECRET = 'antenna'
-DEFAULT_SSID = 'switch'
-DEFAULT_TCP_PORT = 73
+DEFAULT_SECRET = 'band'
+DEFAULT_SSID = 'selector'
 DEFAULT_WEB_PORT = 80
 
 # globals...
 restart = False
-antennas_selected = [1, 2]
 keep_running = True
 config = {}
-
-
-def read_antennas_selected() -> []:
-    result = [1, 2]
-    try:
-        with open(PORT_SETTINGS_FILE, 'r') as port_settings_file:
-            result[0] = safe_int(port_settings_file.readline().strip())
-            result[1] = safe_int(port_settings_file.readline().strip())
-    except OSError:
-        logging.warning(f'failed to load selected antenna data, returning defaults.', 'main:read_port_selected()')
-    except Exception as ex:
-        logging.error(f'failed to load selected antenna data: {type(ex)}, {ex}', 'main:read_port_selected()')
-    logging.info(f'read antennas selected: {result[0]}, {result[1]}')
-    return result
-
-
-def write_antennas_selected(antennas_selected):
-    try:
-        with open(PORT_SETTINGS_FILE, 'w') as port_settings_file:
-            port_settings_file.write(f'{antennas_selected[0]}\n')
-            port_settings_file.write(f'{antennas_selected[1]}\n')
-    except Exception as ex:
-        logging.error(f'failed to write selected antenna data: {type(ex)}, {ex}',
-                      'main:write_antennas_selected()')
-    return
 
 
 def read_config():
@@ -166,18 +142,16 @@ def default_config():
     return {
         'SSID': 'your_network_ssid',
         'secret': 'your_network_password',
-        'tcp_port': '73',
         'web_port': '80',
         'ap_mode': False,
         'dhcp': True,
-        'hostname': 'ant-switch',
+        'hostname': 'selector1',
         'ip_address': '192.168.1.73',
         'netmask': '255.255.255.0',
         'gateway': '192.168.1.1',
         'dns_server': '8.8.8.8',
-        'port_bands': [0, 0, 0, 0, 0, 0, 0, 0],
-        'port_names': ['not set', 'not set', 'not set', 'not set', 'not set', 'not set', 'not set', 'not set'],
-        'radio_names': ['Radio 1', 'Radio 2']
+        "radio_number": "1",
+        "switch_ip": "192.168.1.166",
     }
 
 
@@ -201,14 +175,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         config = read_config()
         dirty = False
         errors = False
-        tcp_port = args.get('tcp_port')
-        if tcp_port is not None:
-            tcp_port_int = safe_int(tcp_port, -2)
-            if 0 <= tcp_port_int <= 65535:
-                config['tcp_port'] = tcp_port
-                dirty = True
-            else:
-                errors = True
+        # TODO FIXME new config items
         web_port = args.get('web_port')
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
@@ -311,105 +278,58 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/kpa_status'
-    payload = {'radio_1_antenna': antennas_selected[0],
-               'radio_2_antenna': antennas_selected[1],
-               'radio_names': config['radio_names'],
-               'antenna_names': config['antenna_names']}
+    payload = {'radio_number': config['radio_number'],
+               'switch_ip': config['switch_ip']}
     response = json.dumps(payload).encode('utf-8')
     http_status = 200
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
 
-async def api_select_antenna_callback(http, verb, args, reader, writer, request_headers=None):
-    global antennas_selected
-    radio = safe_int(args.get('radio', '0'))
-    antenna_requested = safe_int(args.get('antenna', '0'))
-    if 1 <= radio <= 2 and 1 <= antenna_requested <= 8:
-        other_radio = 2 if radio == 1 else 1
-        if antenna_requested == antennas_selected[other_radio-1]:
-            http_status = 409
-            response = b'That antenna is in use.\r\n'
-        else:
-            antennas_selected[radio - 1] = antenna_requested
-            logging.debug(f'calling set_port({radio}, {antenna_requested})')
-            # set_port(radio, antenna_requested)
-            write_antennas_selected(antennas_selected)
-            http_status = 200
-            response = b'ok\r\n'
-    else:
-        response = b'Bad radio or antenna parameter\r\n'
-        http_status = 400
-    bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
-    return bytes_sent, http_status
-
-
-async def serve_serial_client(reader, writer):
-    """
-    send the data over a dumb connection
-    """
-    t0 = milliseconds()
-    partner = writer.get_extra_info('peername')[0]
-    logging.info(f'client connected from {partner}', 'main:serve_serial_client')
-    client_connected = True
-
-    try:
-        while client_connected:
-            data = await reader.read(1)
-            if data is None:
-                break
-            else:
-                if len(data) == 1:
-                    b = data[0]
-                    if b == 10:  # line feed, get status
-                        payload = {'radio_1_port': antennas_selected[0], 'radio_2_port': antennas_selected[1]}
-                        response = (json.dumps(payload) + '\n').encode('utf-8')
-                        writer.write(response)
-                    elif b == 4 or b == 26 or b == 81 or b == 113:  # ^D/^z/q/Q exit
-                        client_connected = False
-                    await writer.drain()
-
-        reader.close()
-        writer.close()
-        await writer.wait_closed()
-
-    except Exception as ex:
-        logging.error(f'exception in serve_serial_client: {type(ex)}, {ex}', 'main:serve_serial_client')
-    tc = milliseconds()
-    logging.info(f'client disconnected, elapsed time {(tc - t0) / 1000.0:6.3f} seconds', 'main:serve_serial_client')
-
-
 async def msg_loop(q):
     while True:
         msg = await q.get()
-        logging.info(f'msg received: {msg}')
-        # await asyncio.sleep(10)
+        logging.debug(f'msg received: {msg}')
+        m0 = msg[0]
+        m1 = msg[1]
+        if 1 <= m0 <= 4:
+            # button 1-4 on or off.
+            # right now I just send a message to the lcd
+            await q.put((90, f'button {m0} state {m1}'))
+        elif m0 == 90:  # LCD line 1
+            lcd[0] = m1
+        elif m0 == 91:  # LCD line 2
+            lcd[1] = m1
+        else:
+            logging.warning(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
+
+        # await asyncio.sleep(10)  # don't need, the get (above) is awaited.
+
+
+async def net_msg_func(message):
+    lines = message.split('\n')
+    if len(lines) == 1:
+        await msgq.put((91, lines[0]))
+    else:
+        await msgq.put((90, lines[0]))
+        await msgq.put((91, lines[1]))
+
 
 async def main():
-    global antennas_selected, keep_running, config, restart
-    antennas_selected = read_antennas_selected()
-    logging.debug(f'calling set_port(1, {antennas_selected[0]})')
-    #set_port(1, antennas_selected[0])
-    logging.debug(f'calling set_port(2, {antennas_selected[1]})')
-    #set_port(2, antennas_selected[1])
+    global keep_running, config, restart
     config = read_config()
     if len(config) == 0:
         # create default configuration
         config = default_config()
-    tcp_port = safe_int(config.get('tcp_port') or DEFAULT_TCP_PORT, DEFAULT_TCP_PORT)
-    if tcp_port < 0 or tcp_port > 65535:
-        tcp_port = DEFAULT_TCP_PORT
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
-
     ap_mode = config.get('ap_mode', False)
 
     if upython:
-        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET)
-        network_keepalive_task = asyncio.create_task(picow_network.keep_alive())
+        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         morse_code_sender = MorseCode(morse_led)
-        morse_sender_task = asyncio.create_task(morse_code_sender.morse_sender())
+        morse_sender_task = asyncio.create_task(morse_code_sender.morse_sender())  # TODO move to object init
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
@@ -421,15 +341,11 @@ async def main():
     http_server.add_uri_callback('/api/rename_file', api_rename_file_callback)
     http_server.add_uri_callback('/api/restart', api_restart_callback)
     http_server.add_uri_callback('/api/status', api_status_callback)
-    http_server.add_uri_callback('/api/select_antenna', api_select_antenna_callback)
 
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     web_server = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
-    logging.info(f'Starting tcp service on port {tcp_port}', 'main:main')
-    tcp_server = asyncio.create_task(asyncio.start_server(serve_serial_client, '0.0.0.0', tcp_port))
 
     reset_button_pressed_count = 0
-    last_message = ''
     while keep_running:
         if upython:
             await asyncio.sleep(0.25)
@@ -445,17 +361,6 @@ async def main():
                 config['ap_mode'] = ap_mode
                 save_config(config)
                 keep_running = False
-            if picow_network.get_message() != last_message:
-                last_message = picow_network.get_message()
-                morse_code_sender.set_message(last_message)
-                await msgq.put(last_message)
-            buts = 'no buts'
-            #buts = ('1 ' if not sw1.value() else '  ') + \
-            #       ('2 ' if not sw2.value() else '  ') + \
-            #       ('3 ' if not sw3.value() else '  ') + \
-            #       ('4 ' if not sw4.value() else '  ')
-            lcd[0] = f'buttons : {buts:>10s}'
-            lcd[1] = f'{last_message:^20s}'
         else:
             await asyncio.sleep(10.0)
     if upython:

@@ -24,23 +24,34 @@
 import asyncio
 from machine import Pin
 
-class Button:
+class FourBits:
     debounce_ms = 50
 
-    def __init__(self, pin, queue, low_msg, hi_msg):
-        if isinstance(pin, int):
-            pin = Pin(pin, mode=Pin.IN, pull=Pin.PULL_UP)
-        self._pin = pin
+    def __init__(self, pins, queue, base_msg):
+        """
+        this thing looks at a collection of pins and returns an integer value.
+        use case is to read band data from elecraft K3 accessory jack.
+        :param pins: is a list or tuple [MSB...LSB] (lsb higher index)
+        :param queue: the message queue to write events to
+        :param base_msg: this is a tuple. this class will write the numeric value of the pins to the 2nd element.
+        """
+        self._pins = []
+        for pin in pins:
+            if isinstance(pin, int):
+                pin = Pin(pin, mode=Pin.IN, pull=Pin.PULL_UP)
+            self._pins.append(pin)
         self._queue = queue
-        self._low_msg = low_msg
-        self._hi_msg = hi_msg
+        self._base_msg = base_msg
         self._last = None # always send an event after init.
-        asyncio.create_task(self._edge_checker())
+        asyncio.create_task(self._bits_checker())
 
-    async def _edge_checker(self):
+    async def _bits_checker(self):
         while True:
-            latest = self._pin.value()
+            latest = 0
+            for pin in self._pins:
+                latest = (latest << 1) + pin.value()
             if latest != self._last:
                 self._last = latest
-                await self._queue.put(self._hi_msg if latest else self._low_msg)
-            await asyncio.sleep_ms(Button.debounce_ms)
+                new_msg = (self._base_msg[0], latest)
+                await self._queue.put(new_msg)
+            await asyncio.sleep_ms(FourBits.debounce_ms)

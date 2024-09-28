@@ -38,6 +38,7 @@ FILES_LIST = [
     'data/',
     'alcd.py',
     'button.py',
+    'fourbits.py',
     'http_server.py',
     'main.py',
     'micro_logging.py',
