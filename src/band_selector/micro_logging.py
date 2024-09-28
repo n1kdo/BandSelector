@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.1'
+__version__ = '0.0.3'
 
 from utils import get_timestamp
 
@@ -62,6 +62,10 @@ def warning(message, caller=None):
 def error(message, caller=None):
     if loglevel >= ERROR:
         _log('ERROR', message, caller)
+
+
+def exception(message:str, caller:str = None, exc_info:Exception = None) -> None:
+    _log('CRITICAL', message + str(exc_info), caller)
 
 
 def critical(message, caller=None):

@@ -45,6 +45,9 @@ class FourBits:
         self._last = None # always send an event after init.
         asyncio.create_task(self._bits_checker())
 
+    def invalidate(self):
+        self._last = None
+
     async def _bits_checker(self):
         while True:
             latest = 0

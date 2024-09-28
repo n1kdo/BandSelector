@@ -46,6 +46,7 @@ FILES_LIST = [
     # do not need not_machine.py on real hardware
     'picow_network.py',
     'ringbuf_queue.py',
+    'uaiohttpclient.py',
     'utils.py',
     'content/favicon.ico',
     'content/files.html',

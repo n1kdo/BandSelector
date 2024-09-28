@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.2'
+__version__ = '0.9.3'
 
 # disable pylint import error
 # pylint: disable=E0401
@@ -39,11 +39,10 @@ else:
 
 
 class MorseCode:
-    MORSE_PERIOD = 15  # x 10 to MS: the speed of the morse code is set by the dit length of 150 ms.
-    MORSE_DIT = MORSE_PERIOD
+    MORSE_DIT = 15  # x 10 to MS: the speed of the morse code is set by the dit length of 150 ms.
     MORSE_ESP = MORSE_DIT  # inter-element space
-    MORSE_DAH = 3 * MORSE_PERIOD
-    MORSE_LSP = 5 * MORSE_PERIOD  # more space between letters
+    MORSE_DAH = 3 * MORSE_DIT
+    MORSE_LSP = 5 * MORSE_DIT  # more space between letters
     MORSE_PATTERNS = {  # sparse to save space
         ' ': (0, 0, 0, 0, 0),  # 5 element spaces then a letter space = 10 element pause  # space is 0x20 ascii
         '0': (MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH, MORSE_DAH),  # 0 is 0x30 ascii
@@ -74,10 +73,18 @@ class MorseCode:
     def __init__(self, led):
         self.led = led
         self.message = 'START '
+        self.alive = True
+        asyncio.create_task(self.morse_sender())
+
 
     def set_message(self, new_message):
         # do not send periods in Morse code, send a space instead.
         new_message = new_message.upper().replace('.', ' ')
+
+        # make sure there is a trailing space
+        if new_message[-1] != ' ':
+            new_message += ' '
+
         if self.message != new_message:
             logging.info(f'new message "{new_message}")', 'morse_code:set_message')
             self.message = new_message
@@ -90,7 +97,7 @@ class MorseCode:
         sleep = asyncio.sleep
         patterns = self.MORSE_PATTERNS
 
-        while True:
+        while self.alive:
             msg = self.message
             logging.debug(f'starting message "{msg}"', 'morse_code:morse_sender')
             for morse_letter in msg:

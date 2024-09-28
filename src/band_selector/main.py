@@ -31,6 +31,8 @@ __version__ = '0.0.1'
 
 import json
 
+from select import select
+
 from alcd import LCD
 from button import Button
 from fourbits import FourBits
@@ -42,41 +44,48 @@ from http_server import (HttpServer,
 from morse_code import MorseCode
 from picow_network import PicowNetwork
 from ringbuf_queue import RingbufQueue
-from utils import milliseconds, upython, safe_int
+import uaiohttpclient as aiohttp
+from utils import milliseconds, upython, safe_int, num_bits_set
 import micro_logging as logging
 
 if upython:
     import machine
+    import network
     import uasyncio as asyncio
 else:
     import asyncio
     from not_machine import machine
 
-BANDS = ['None', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M', '10M', '6M', '2M', '70cm']
-# port_bands is a BITMASK, 16 bits wide.
-BAND_160M_MASK = 0x0001
-BAND_80M_MASK = 0x0002
-BAND_60M_MASK = 0x0004
-BAND_40M_MASK = 0x0008
-BAND_30M_MASK = 0x0010
-BAND_20M_MASK = 0x0020
-BAND_17M_MASK = 0x0040
-BAND_15M_MASK = 0x0080
-BAND_12M_MASK = 0x0100
-BAND_10M_MASK = 0x0200
-BAND_6M_MASK = 0x0400
-BAND_2M_MASK = 0x0800
-BAND_70CM_MASK = 0x1000
-BAND_OTHER1_MASK = 0x2000  # not used
-BAND_OTHER2_MASK = 0x4000  # not used
-BAND_OTHER3_MASK = 0x8000  # not used
+BANDS = ['NoBand', '160M',  '80M',  '60M',  '40M',  '30M',  '20M',  '17M',  '15M',  '12M',  '10M',   '6M',  '2M', '70cm']
+MASKS = [  0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000]
+#               0       1       2       3       4       5       6       7        8      9      10      11     12      13
+
+# this list maps band indexes to the value of the 4-bit band select outputs.
+# there are 11 valid outputs, 0000 -> 1010 (0-10), the other four will return NO BAND (0)
+ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
+                     1,  # 0001 -> 160M
+                     2,  # 0010 -> 80M
+                     4,  # 0011 -> 40M
+                     5,  # 0100 -> 30M
+                     6,  # 0101 -> 20M
+                     7,  # 0110 -> 17M
+                     8,  # 0111 -> 15M
+                     9,  # 1000 -> 12M
+                     10, # 1001 -> 10M
+                     11, # 1010 ->  6M
+                     0,  # 1011 -> invalid
+                     0,  # 1100 -> invalid
+                     0,  # 1101 -> invalid
+                     0,  # 1111 -> invalid
+                     ]
 
 # set up message queue
 msgq = RingbufQueue(32)
 
 # other I/O setup
 onboard = machine.Pin('LED', machine.Pin.OUT, value=1)  # turn on right away
-morse_led = machine.Pin(0, machine.Pin.OUT, value=0)  # status/morse code LED on GPIO0 / pin 1
+morse_led = onboard  # TODO FIXME does this even need Morse?
+#morse_led = machine.Pin(0, machine.Pin.OUT, value=0)  # status/morse code LED on GPIO0 / pin 1
 reset_button = machine.Pin(1, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO1 / pin 2
 
 # pushbuttons on display board on GPIO10-13
@@ -92,12 +101,12 @@ Button(sw4, msgq, (4, 0), (4, 1))  # SW 4
 
 # LCD display on display board on GPIO pins
 # RW is hardwired to GPIO7,
-machine.Pin(7, machine.Pin.OUT, value=0)
+machine.Pin(7, machine.Pin.OUT, value=0)  # this is the RW pin, hold it low.
 lcd = LCD((8, 6, 5, 4, 3, 2), cols=20)
 
 # radio interface on GPIO15-22
-auxbus = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)  # AUXBUS data input on GPIO15 (maybe)
-inhibit = machine.Pin(16, machine.Pin.OUT, value=0)  # TX inhibit control on GPIO16
+# auxbus = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)  # AUXBUS data input on GPIO15 (maybe)
+inhibit_pin = machine.Pin(16, machine.Pin.OUT, value=0)  # TX inhibit control on GPIO16
 
 band0 = machine.Pin(17, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND0 data input on GPIO17
 band1 = machine.Pin(18, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND1 data input on GPIO18
@@ -105,9 +114,10 @@ band2 = machine.Pin(19, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND2 data input
 band3 = machine.Pin(20, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND3 data input on GPIO20
 
 band_detector = FourBits([band3, band2, band1, band0], msgq, (100, 0))
-poweron = machine.Pin(21, machine.Pin.IN, machine.Pin.PULL_UP)  # power on control on GPIO21
+poweron_pin = machine.Pin(21, machine.Pin.IN, machine.Pin.PULL_UP)  # power on control on GPIO21
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
 Button(powersense, msgq, (10, 0), (10, 1))
+
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
 
@@ -121,6 +131,13 @@ DEFAULT_WEB_PORT = 80
 restart = False
 keep_running = True
 config = {}
+current_antenna = -1
+current_antenna_name = 'unknown antenna'
+current_band_number = 0
+radio_name = 'unknown radio'
+antenna_names = []
+antenna_bands = []
+band_antennae = []  # list of antennas that could work on the current band.
 
 
 def read_config():
@@ -153,6 +170,40 @@ def default_config():
         "radio_number": "1",
         "switch_ip": "192.168.1.166",
     }
+
+
+async def api_response(resp, msg, msgq):
+    """
+    function waits for API response, enqueues message containing response
+    :param resp:
+    :param msg:
+    :param msgq:
+    :return:
+    """
+    payload = await resp.read()
+    await resp.aclose()
+    data = (msg[1][0], payload)
+    new_msg = (msg[0], data)
+    await msgq.put(new_msg)
+
+
+def call_api(config, endpoint, msg, msgq):
+    # TODO this is too slow. but it does work.
+    # t0 = milliseconds()
+    url = f'http://{config.get('switch_ip', 'localhost')}{endpoint}'
+    logging.info(f'calling api {url}', 'main:call_api')
+    resp = yield from aiohttp.request("GET", url)
+    http_status = resp.status
+    # t1 = milliseconds()
+    # print(resp, t1 - t0)
+    msg = (msg[0], (http_status, 'no response'))
+    asyncio.create_task(api_response(resp, msg, msgq))
+
+
+async def select_antenna(config, new_antenna, msg, msgq):
+    radio_number = config.get('radio_number')
+    endpoint = f'/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
+    await call_api(config, endpoint, msg, msgq)
 
 
 # noinspection PyUnusedLocal
@@ -286,33 +337,148 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
     return bytes_sent, http_status
 
 
+def find_band_antennae(new_band_number: int) -> [int]:
+    antennas = []
+    mask = MASKS[new_band_number]
+    bands = 1
+    # get a list of antennas for this band with the list sorted from the antenna with the fewest other bands
+    while bands < len(BANDS):
+        for i in range(0, len(antenna_bands)):
+            if mask & antenna_bands[i] and num_bits_set(antenna_bands[i]) == bands:
+                antennas.append(i)
+        bands += 1
+    return antennas
+
+
+def set_inhibit(inhibit):
+    inhibit_pin.value(inhibit)
+
+
+async def new_band(new_band_number):
+    global band_antennae
+    logging.info(f'!!! NEW BAND! {new_band_number}')
+    await msgq.put((90, f'{radio_name} {BANDS[new_band_number]}'))
+    set_inhibit(1)
+    band_antennae = find_band_antennae(new_band_number)
+    if len(band_antennae) == 0:
+        # logging.warning(f'no antenna available for band {BANDS[new_band_number]}')
+        await msgq.put((91, 'TX Inhibit: no Ant.'))
+    else:
+        # for antenna in band_antennae:
+        #     print(f'{antenna_names[antenna]}')
+        await msgq.put((91, ''))  # erase the line
+        await select_antenna(config, band_antennae.pop(0) + 1,(202, (0, '')), msgq)
+
+
 async def msg_loop(q):
+    global current_antenna, current_antenna_name, current_band_number, radio_name, antenna_names, antenna_bands, band_antennae
     while True:
         msg = await q.get()
-        logging.debug(f'msg received: {msg}')
+        t0 = milliseconds()
+        logging.debug(f'msg received: {msg}', 'main:msg_loop')
         m0 = msg[0]
         m1 = msg[1]
-        if 1 <= m0 <= 4:
-            # button 1-4 on or off.
+        if 1 <= m0 <= 2:
+            # button 1-2 on or off.
             # right now I just send a message to the lcd
             await q.put((90, f'button {m0} state {m1}'))
+        elif m0 == 3:
+            if m1 == 0:
+                current_band_number += 1
+                if current_band_number >= len(BANDS):
+                    current_band_number = 1
+                await new_band(current_band_number)
+        elif m0 == 4:
+            if m1 == 0:
+                current_band_number -= 1
+                if current_band_number < 1:
+                    current_band_number = len(BANDS) -1
+                await new_band(current_band_number)
+
+        elif m0 == 10:  # power sense changed
+            if m1 == 0:
+                radio_power = True
+            else:
+                radio_power = False
+        elif m0 == 50:
+            # network up/down
+            if m1 == 1: # network is up!
+                logging.info('Network is up!', 'main:msg_loop')
+                await call_api(config, '/api/status', (201, None), msgq)
         elif m0 == 90:  # LCD line 1
             lcd[0] = m1
+            await asyncio.sleep_ms(25)
         elif m0 == 91:  # LCD line 2
             lcd[1] = m1
+            await asyncio.sleep_ms(25)
+        elif m0 == 100:  # band change detected
+            #logging.info(f'band change, sense = {m1}', 'main:msg_loop')
+            if 0 <= m1 <= len(ELECRAFT_BAND_MAP):
+                current_band_number = ELECRAFT_BAND_MAP[m1]
+                await new_band(current_band_number)
+                # TODO sniff here?
+        elif m0 == 201:  # http status response
+            http_status = m1[0]
+            try:
+                switch_data = json.loads(m1[1])
+            except json.decoder.JSONDecodeError as jde:
+                logging.exception('cannot decode json', 'main:msg_loop', jde)
+                switch_data = {}
+            # print(switch_data)
+            antenna_names = switch_data.get('antenna_names', ['','','','','','','',''])
+            antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
+            radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
+            radio_number = int(config.get('radio_number', -1))
+            radio_name = radio_names[radio_number-1]
+            await msgq.put((90, radio_name + ' ' + BANDS[current_band_number]))
+            if radio_number == 1:
+                current_antenna = switch_data.get('radio_1_antenna', -1)
+            elif radio_number == 2:
+                current_antenna = switch_data.get('radio_2_antenna', -1)
+            if current_antenna == -1:
+                current_antenna_name = 'unknown antenna'
+            else:
+                current_antenna_name = antenna_names[current_antenna-1]
+                if MASKS[current_band_number] & antenna_bands[current_antenna-1]:
+                    set_inhibit(0)
+                    await msgq.put((91, current_antenna_name))
+                else:
+                    set_inhibit(1)
+                    await msgq.put((91, 'Inhibit: wrong ant'))
+        elif m0 == 202:  # http select antenna response
+            http_status = m1[0]
+            if http_status == 200:
+                await call_api(config, '/api/status', (201, None), msgq)
+            elif 400 <= http_status <= 499:
+                if len(band_antennae) == 0:
+                    # logging.warning(f'no antenna available for band {BANDS[new_band_number]}')
+                    await msgq.put((91, 'TX Inhibit: no Ant.'))
+                    set_inhibit(1)
+                else:
+                    # if there is another antenna candidate, try to get it
+                    await msgq.put((91, ''))  # erase the line
+                    await select_antenna(config, band_antennae.pop(0) + 1, (202, (0, '')), msgq)
+
+            payload = m1[1]
+            # print(http_status, payload)
         else:
             logging.warning(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
-
+        t1 = milliseconds()
+        if logging.loglevel == logging.DEBUG:
+            logging.debug(f'   Message {m0} handling took {t1-t0} ms.', 'main:msg_loop')
         # await asyncio.sleep(10)  # don't need, the get (above) is awaited.
 
 
-async def net_msg_func(message):
+async def net_msg_func(message:str, msg_status=0) -> None:
+    logging.debug(f'network message: "{message}", {msg_status}')
     lines = message.split('\n')
     if len(lines) == 1:
         await msgq.put((91, lines[0]))
     else:
         await msgq.put((90, lines[0]))
         await msgq.put((91, lines[1]))
+    if msg_status == network.STAT_GOT_IP:
+        await msgq.put((50,1))
 
 
 async def main():
@@ -329,7 +495,6 @@ async def main():
     if upython:
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         morse_code_sender = MorseCode(morse_led)
-        morse_sender_task = asyncio.create_task(morse_code_sender.morse_sender())  # TODO move to object init
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
