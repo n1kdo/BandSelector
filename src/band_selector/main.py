@@ -79,6 +79,20 @@ ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
                      0,  # 1111 -> invalid
                      ]
 
+# message IDs
+MSG_BTN_1 = 1
+MSG_BTN_2 = 2
+MSG_BTN_3 = 3
+MSG_BTN_4 = 4
+MSG_POWER_SENSE = 10
+MSG_NETWORK_CHANGE = 20
+MSG_NETWORK_UPDOWN = 50
+MSG_LCD_LINE0 = 90
+MSG_LCD_LINE1 = 91
+MSG_BAND_CHANGE = 100
+MSG_STATUS_RESPONSE = 201
+MSG_ANTENNA_RESPONSE = 202
+
 # set up message queue
 msgq = RingbufQueue(32)
 
@@ -94,10 +108,10 @@ sw2 = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input 
 sw3 = machine.Pin(11, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO11 / pin 15
 sw4 = machine.Pin(10, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO10 / pin 14
 
-Button(sw1, msgq, (1, 0), (1, 1))  # SW1
-Button(sw2, msgq, (2, 0), (2, 1))
-Button(sw3, msgq, (3, 0), (3, 1))
-Button(sw4, msgq, (4, 0), (4, 1))  # SW 4
+Button(sw1, msgq, (MSG_BTN_1, 0), (MSG_BTN_1, 1))  # SW1
+Button(sw2, msgq, (MSG_BTN_2, 0), (MSG_BTN_2, 1))
+Button(sw3, msgq, (MSG_BTN_3, 0), (MSG_BTN_3, 1))
+Button(sw4, msgq, (MSG_BTN_4, 0), (MSG_BTN_4, 1))  # SW 4
 
 # LCD display on display board on GPIO pins
 # RW is hardwired to GPIO7,
@@ -113,10 +127,10 @@ band1 = machine.Pin(18, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND1 data input
 band2 = machine.Pin(19, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND2 data input on GPIO19
 band3 = machine.Pin(20, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND3 data input on GPIO20
 
-band_detector = FourBits([band3, band2, band1, band0], msgq, (100, 0))
+band_detector = FourBits([band3, band2, band1, band0], msgq, (MSG_BAND_CHANGE, 0))
 poweron_pin = machine.Pin(21, machine.Pin.IN, machine.Pin.PULL_UP)  # power on control on GPIO21
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
-Button(powersense, msgq, (10, 0), (10, 1))
+Button(powersense, msgq, (MSG_POWER_SENSE, 0), (MSG_POWER_SENSE, 1))
 
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
@@ -209,7 +223,7 @@ async def select_antenna(config, new_antenna, msg, msgq):
 # noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
-    bytes_sent = http.send_simple_response(writer, http_status, None, None, ['Location: /switch.html'])
+    bytes_sent = http.send_simple_response(writer, http_status, None, None, ['Location: /status.html'])
     return bytes_sent, http_status
 
 
@@ -226,7 +240,6 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         config = read_config()
         dirty = False
         errors = False
-        # TODO FIXME new config items
         web_port = args.get('web_port')
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
@@ -275,24 +288,14 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if dns_server is not None:
             config['dns_server'] = dns_server
             dirty = True
-        antenna_bands = args.get('antenna_bands')
-        if antenna_bands is not None:
-            if len(antenna_bands) == 8:
-                config['antenna_bands'] = antenna_bands
-                dirty = True
-            else:
-                errors = True
-        antenna_names = args.get('antenna_names')
-        if antenna_names is not None:
-            if len(antenna_names) == 8:
-                config['antenna_names'] = antenna_names
-                dirty = True
-            else:
-                errors = True
-        radio_names = args.get('radio_names')
-        if radio_names is not None:
-            if len(radio_names) == 2:
-                config['radio_names'] = radio_names
+        switch_ip = args.get('switch_ip')
+        if switch_ip is not None:
+            config['switch_ip'] = switch_ip
+            dirty = True
+        radio_number = safe_int(args.get('radio_number'), -1)
+        if radio_number is not None:
+            if 1 <= radio_number <= 2:
+                config['radio_number'] = radio_number
                 dirty = True
             else:
                 errors = True
@@ -329,8 +332,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/kpa_status'
-    payload = {'radio_number': config['radio_number'],
-               'switch_ip': config['switch_ip']}
+    payload = {'lcd_lines': [lcd[0], lcd[1]]}
     response = json.dumps(payload).encode('utf-8')
     http_status = 200
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
@@ -357,16 +359,17 @@ def set_inhibit(inhibit):
 async def new_band(new_band_number):
     global band_antennae
     logging.info(f'!!! NEW BAND! {new_band_number}')
-    await msgq.put((90, f'{radio_name} {BANDS[new_band_number]}'))
+    await msgq.put((MSG_LCD_LINE0, f'{radio_name} {BANDS[new_band_number]}'))
     set_inhibit(1)
     band_antennae = find_band_antennae(new_band_number)
     if len(band_antennae) == 0:
         # logging.warning(f'no antenna available for band {BANDS[new_band_number]}')
-        await msgq.put((91, 'TX Inhibit: no Ant.'))
+        #                   '12345678901234567890'
+        await msgq.put((MSG_LCD_LINE1, '*No Antenna for Band'))
     else:
         # for antenna in band_antennae:
         #     print(f'{antenna_names[antenna]}')
-        await msgq.put((91, ''))  # erase the line
+        await msgq.put((MSG_LCD_LINE1, ''))  # erase the line
         await select_antenna(config, band_antennae.pop(0) + 1,(202, (0, '')), msgq)
 
 
@@ -378,46 +381,45 @@ async def msg_loop(q):
         logging.debug(f'msg received: {msg}', 'main:msg_loop')
         m0 = msg[0]
         m1 = msg[1]
-        if 1 <= m0 <= 2:
+        if MSG_BTN_1 <= m0 <= MSG_BTN_2:
             # button 1-2 on or off.
             # right now I just send a message to the lcd
-            await q.put((90, f'button {m0} state {m1}'))
-        elif m0 == 3:
+            await q.put((MSG_LCD_LINE0, f'button {m0} state {m1}'))
+        elif m0 == MSG_BTN_3:
             if m1 == 0:
                 current_band_number += 1
                 if current_band_number >= len(BANDS):
                     current_band_number = 1
                 await new_band(current_band_number)
-        elif m0 == 4:
+        elif m0 == MSG_BTN_4:
             if m1 == 0:
                 current_band_number -= 1
                 if current_band_number < 1:
                     current_band_number = len(BANDS) -1
                 await new_band(current_band_number)
-
-        elif m0 == 10:  # power sense changed
+        elif m0 == MSG_POWER_SENSE:  # power sense changed
             if m1 == 0:
                 radio_power = True
             else:
                 radio_power = False
-        elif m0 == 50:
+        elif m0 == MSG_NETWORK_UPDOWN:
             # network up/down
             if m1 == 1: # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
                 await call_api(config, '/api/status', (201, None), msgq)
-        elif m0 == 90:  # LCD line 1
-            lcd[0] = m1
-            await asyncio.sleep_ms(25)
-        elif m0 == 91:  # LCD line 2
-            lcd[1] = m1
-            await asyncio.sleep_ms(25)
-        elif m0 == 100:  # band change detected
+        elif m0 == MSG_LCD_LINE0:  # LCD line 1
+            lcd[0] = f'{m1:^20s}'
+            await asyncio.sleep_ms(50)
+        elif m0 == MSG_LCD_LINE1:  # LCD line 2
+            lcd[1] = f'{m1:^20s}'
+            await asyncio.sleep_ms(50)
+        elif m0 == MSG_BAND_CHANGE:  # band change detected
             #logging.info(f'band change, sense = {m1}', 'main:msg_loop')
             if 0 <= m1 <= len(ELECRAFT_BAND_MAP):
                 current_band_number = ELECRAFT_BAND_MAP[m1]
                 await new_band(current_band_number)
                 # TODO sniff here?
-        elif m0 == 201:  # http status response
+        elif m0 == MSG_STATUS_RESPONSE:  # http status response
             http_status = m1[0]
             try:
                 switch_data = json.loads(m1[1])
@@ -430,7 +432,7 @@ async def msg_loop(q):
             radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
             radio_number = int(config.get('radio_number', -1))
             radio_name = radio_names[radio_number-1]
-            await msgq.put((90, radio_name + ' ' + BANDS[current_band_number]))
+            await msgq.put((MSG_LCD_LINE0, radio_name + ' ' + BANDS[current_band_number]))
             if radio_number == 1:
                 current_antenna = switch_data.get('radio_1_antenna', -1)
             elif radio_number == 2:
@@ -441,26 +443,25 @@ async def msg_loop(q):
                 current_antenna_name = antenna_names[current_antenna-1]
                 if MASKS[current_band_number] & antenna_bands[current_antenna-1]:
                     set_inhibit(0)
-                    await msgq.put((91, current_antenna_name))
+                    await msgq.put((MSG_LCD_LINE1, current_antenna_name))
                 else:
                     set_inhibit(1)
-                    await msgq.put((91, 'Inhibit: wrong ant'))
-        elif m0 == 202:  # http select antenna response
+                    # try to get the right band...
+                    await new_band(current_band_number)
+        elif m0 == MSG_ANTENNA_RESPONSE:  # http select antenna response
             http_status = m1[0]
+            payload = m1[1].decode().strip()
             if http_status == 200:
                 await call_api(config, '/api/status', (201, None), msgq)
             elif 400 <= http_status <= 499:
                 if len(band_antennae) == 0:
                     # logging.warning(f'no antenna available for band {BANDS[new_band_number]}')
-                    await msgq.put((91, 'TX Inhibit: no Ant.'))
+                    await msgq.put((MSG_LCD_LINE1, f'*{payload}'))
                     set_inhibit(1)
                 else:
                     # if there is another antenna candidate, try to get it
-                    await msgq.put((91, ''))  # erase the line
+                    await msgq.put((MSG_LCD_LINE1, ''))  # erase the line
                     await select_antenna(config, band_antennae.pop(0) + 1, (202, (0, '')), msgq)
-
-            payload = m1[1]
-            # print(http_status, payload)
         else:
             logging.warning(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
         t1 = milliseconds()
@@ -473,12 +474,12 @@ async def net_msg_func(message:str, msg_status=0) -> None:
     logging.debug(f'network message: "{message}", {msg_status}')
     lines = message.split('\n')
     if len(lines) == 1:
-        await msgq.put((91, lines[0]))
+        await msgq.put((MSG_LCD_LINE1, lines[0]))
     else:
-        await msgq.put((90, lines[0]))
-        await msgq.put((91, lines[1]))
+        await msgq.put((MSG_LCD_LINE0, lines[0]))
+        await msgq.put((MSG_LCD_LINE1, lines[1]))
     if msg_status == network.STAT_GOT_IP:
-        await msgq.put((50,1))
+        await msgq.put((MSG_NETWORK_UPDOWN, 1))
 
 
 async def main():

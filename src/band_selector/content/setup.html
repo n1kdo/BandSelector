@@ -85,6 +85,17 @@
             width: 5em;
         }
 
+        input[type=number] {
+            display: table-cell;
+            text-align: left;
+        }
+
+        /* ensures the increment/decrement arrows always display */
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button {
+            opacity: 1;
+        }
+
+
         label {
             display: table-cell;
             font-size: 10pt;
@@ -122,15 +133,16 @@
 
         function process_get_config_response(message) {
             let config = JSON.parse(message);
-            document.getElementById("radio_1_name").value = config.radio_names[0];
-            document.getElementById("radio_2_name").value = config.radio_names[1];
+            document.getElementById("radio_number").value = config.radio_number;
+            document.getElementById("switch_ip").value = config.switch_ip;
         }
 
         function set_config() {
-            let radio_1_name = document.getElementById("radio_1_name").value;
-            let radio_2_name = document.getElementById("radio_2_name").value;
+            let radio_number = document.getElementById("radio_number").value;
+            let switch_ip = document.getElementById("switch_ip").value;
             let config = {};
-            config.radio_names = [radio_1_name, radio_2_name];
+            config.radio_number = radio_number;
+            config.switch_ip = switch_ip;
             let payload = JSON.stringify(config);
             let xmlHttp = new XMLHttpRequest();
             if (xmlHttp == null) {
@@ -153,16 +165,16 @@
 
     </script>
     <body onload="page_load()">
-        <div class="header">Configure Radios</div>
+        <div class="header">Configure Band Selector</div>
         <div class="setup_form">
             <form>
                 <p>
-                    <label for="radio_1_name">Radio 1 Name:</label>
-                    <input type="text" id="radio_1_name" maxlength="16">
+                    <label for="radio_number">Radio Number:</label>
+                    <input type="number" id="radio_number" min="1" max="2">
                 </p>
                 <p>
-                    <label for="radio_2_name">Radio 2 Name:</label>
-                    <input type="text" id="radio_2_name" maxlength="16">
+                    <label for="switch_ip">Switch IP Address:</label>
+                    <input type="text" id="switch_ip" maxlength="15">
                 </p>
             </form>
             <div class="centered">
@@ -173,13 +185,12 @@
         </div>
         <div class="row">
             <div class="bottom_links">
-                <a href="switch.html">Switch</a>
-                <span class="selected">Radios</span>
-                <a href="antennas.html">Antennas</a>
+                <a href="status.html">Status</a>
+                <span class="selected">Setup</span>
                 <a href="network.html">Network</a>
                 <a href="files.html">Files</a>
             </div>
-            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20240906</div>
+            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20240929</div>
         </div>
     </body>
 </html>

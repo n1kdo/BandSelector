@@ -51,7 +51,8 @@ FILES_LIST = [
     'content/favicon.ico',
     'content/files.html',
     'content/network.html',
-    'content/switch.html',
+    'content/setup.html',
+    'content/status.html',
 ]
 SPECIAL_FILES = ['data/config.json']
 
