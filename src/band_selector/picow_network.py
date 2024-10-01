@@ -118,8 +118,8 @@ class PicowNetwork:
             onboard.on()
 
             try:
-                await self.set_message(f'setting hostname "{self._hostname}"')
-                logging.info(f'  setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
+                await self.set_message(f'Setting hostname "{self._hostname}"')
+                logging.info(f'  Setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network._hostname(self._hostname)
             except ValueError:
                 await self.set_message('Failed to set hostname.', -10)
@@ -156,7 +156,7 @@ class PicowNetwork:
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
             onboard.on()
             try:
-                await self.set_message(f'setting hostname\n{self._hostname}')
+                await self.set_message(f'Setting hostname\n{self._hostname}')
                 logging.info(f'...setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:

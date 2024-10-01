@@ -189,32 +189,32 @@ def default_config():
 async def api_response(resp, msg, msgq):
     """
     function waits for API response, enqueues message containing response
-    :param resp:
-    :param msg:
-    :param msgq:
-    :return:
+    :param resp: the HTTP response data from the API call
+    :param msg: a "prototype" for the message to be returned.  a 2-tuple, (MSG_ID, payload)
+    :param msgq: the message queue on which to enqueue the message
+    :return: None
     """
     payload = await resp.read()
     await resp.aclose()
-    data = (msg[1][0], payload)
+    data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
     new_msg = (msg[0], data)
     await msgq.put(new_msg)
 
 
 def call_api(config, endpoint, msg, msgq):
     # TODO this is too slow. but it does work.
-    # t0 = milliseconds()
+    t0 = milliseconds()
     url = f'http://{config.get('switch_ip', 'localhost')}{endpoint}'
-    logging.info(f'calling api {url}', 'main:call_api')
+    #logging.info(f'calling api {url} at {milliseconds()}', 'main:call_api')
     resp = yield from aiohttp.request("GET", url)
     http_status = resp.status
-    # t1 = milliseconds()
-    # print(resp, t1 - t0)
+    t1 = milliseconds()
+    #logging.info(f'api call to {endpoint} took {t1 - t0} ms')
     msg = (msg[0], (http_status, 'no response'))
     asyncio.create_task(api_response(resp, msg, msgq))
 
 
-async def select_antenna(config, new_antenna, msg, msgq):
+async def call_select_antenna_api(config, new_antenna, msg, msgq):
     radio_number = config.get('radio_number')
     endpoint = f'/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
     await call_api(config, endpoint, msg, msgq)
@@ -358,19 +358,17 @@ def set_inhibit(inhibit):
 
 async def new_band(new_band_number):
     global band_antennae
-    logging.info(f'!!! NEW BAND! {new_band_number}')
+    logging.info(f'new band: {BANDS[new_band_number]}', 'main:new_band')
     await msgq.put((MSG_LCD_LINE0, f'{radio_name} {BANDS[new_band_number]}'))
     set_inhibit(1)
     band_antennae = find_band_antennae(new_band_number)
     if len(band_antennae) == 0:
-        # logging.warning(f'no antenna available for band {BANDS[new_band_number]}')
-        #                   '12345678901234567890'
+        logging.warning(f'no antenna available for band {BANDS[new_band_number]}', 'main:new_band')
+        #                              '12345678901234567890'
         await msgq.put((MSG_LCD_LINE1, '*No Antenna for Band'))
     else:
-        # for antenna in band_antennae:
-        #     print(f'{antenna_names[antenna]}')
         await msgq.put((MSG_LCD_LINE1, ''))  # erase the line
-        await select_antenna(config, band_antennae.pop(0) + 1,(202, (0, '')), msgq)
+        await call_select_antenna_api(config, band_antennae.pop(0) + 1, (202, (0, '')), msgq)
 
 
 async def msg_loop(q):
@@ -409,16 +407,18 @@ async def msg_loop(q):
                 await call_api(config, '/api/status', (201, None), msgq)
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
+            logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
             await asyncio.sleep_ms(50)
         elif m0 == MSG_LCD_LINE1:  # LCD line 2
             lcd[1] = f'{m1:^20s}'
+            logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
             await asyncio.sleep_ms(50)
         elif m0 == MSG_BAND_CHANGE:  # band change detected
             #logging.info(f'band change, sense = {m1}', 'main:msg_loop')
             if 0 <= m1 <= len(ELECRAFT_BAND_MAP):
                 current_band_number = ELECRAFT_BAND_MAP[m1]
-                await new_band(current_band_number)
-                # TODO sniff here?
+                if len(antenna_names) > 0:  # only change bands if there are antennas.
+                    await new_band(current_band_number)
         elif m0 == MSG_STATUS_RESPONSE:  # http status response
             http_status = m1[0]
             try:
@@ -438,7 +438,9 @@ async def msg_loop(q):
             elif radio_number == 2:
                 current_antenna = switch_data.get('radio_2_antenna', -1)
             if current_antenna == -1:
-                current_antenna_name = 'unknown antenna'
+                current_antenna_name = 'unknown antenna -1'
+                set_inhibit(1)
+                await msgq.put((MSG_LCD_LINE1, current_antenna_name))
             else:
                 current_antenna_name = antenna_names[current_antenna-1]
                 if MASKS[current_band_number] & antenna_bands[current_antenna-1]:
@@ -461,7 +463,7 @@ async def msg_loop(q):
                 else:
                     # if there is another antenna candidate, try to get it
                     await msgq.put((MSG_LCD_LINE1, ''))  # erase the line
-                    await select_antenna(config, band_antennae.pop(0) + 1, (202, (0, '')), msgq)
+                    await call_select_antenna_api(config, band_antennae.pop(0) + 1, (202, (0, '')), msgq)
         else:
             logging.warning(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
         t1 = milliseconds()

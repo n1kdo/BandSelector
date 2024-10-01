@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.3'
+__version__ = '0.0.4'
 
 from utils import get_timestamp
 
@@ -38,10 +38,11 @@ loglevel = ERROR
 
 
 def _log(level: str, message: str, caller=None):
+    level = '[' + level + ']'
     if caller is None:
-        print(f'{get_timestamp()} [{level}] {message}')
+        print(f'{get_timestamp()} {level:<9s} {message}')
     else:
-        print(f'{get_timestamp()} [{level}] [{caller}] {message}')
+        print(f'{get_timestamp()} {level:<9s} [{caller}] {message}')
 
 
 def debug(message, caller=None):
