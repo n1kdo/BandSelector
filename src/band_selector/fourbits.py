@@ -30,7 +30,7 @@ class FourBits:
     def __init__(self, pins, queue, base_msg):
         """
         this thing looks at a collection of pins and returns an integer value.
-        use case is to read band data from elecraft K3 accessory jack.
+        use case is to read band data from Elecraft K3/K4 accessory jack.
         :param pins: is a list or tuple [MSB...LSB] (lsb higher index)
         :param queue: the message queue to write events to
         :param base_msg: this is a tuple. this class will write the numeric value of the pins to the 2nd element.

@@ -11067,7 +11067,7 @@
 		(dnp no)
 		(uuid "7fb4941d-3d14-4f2e-bbfd-0f239ad8533e")
 		(property "Reference" "R1"
-			(at 96.52 193.548 90)
+			(at 96.52 191.77 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -11075,7 +11075,7 @@
 			)
 		)
 		(property "Value" "100"
-			(at 96.52 185.42 90)
+			(at 96.52 186.69 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -15598,7 +15598,7 @@
 		(dnp no)
 		(uuid "ff606041-e166-433b-9b4c-a39f1996dc77")
 		(property "Reference" "R8"
-			(at 96.774 157.226 90)
+			(at 96.52 162.814 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -15606,12 +15606,11 @@
 			)
 		)
 		(property "Value" "100"
-			(at 101.6 137.16 90)
+			(at 96.52 157.48 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"

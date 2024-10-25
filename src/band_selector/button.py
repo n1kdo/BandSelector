@@ -44,3 +44,6 @@ class Button:
                 self._last = latest
                 await self._queue.put(self._hi_msg if latest else self._low_msg)
             await asyncio.sleep_ms(Button.debounce_ms)
+
+    def invalidate(self):
+        self._last = None

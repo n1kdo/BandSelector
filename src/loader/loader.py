@@ -42,7 +42,6 @@ FILES_LIST = [
     'http_server.py',
     'main.py',
     'micro_logging.py',
-    'morse_code.py',
     # do not need not_machine.py on real hardware
     'picow_network.py',
     'ringbuf_queue.py',

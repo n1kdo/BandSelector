@@ -1,7 +1,6 @@
 {
   "SSID": "Your SSID",
   "secret": "Your wireless password",
-  "tcp_port": "73",
   "web_port": "80",
   "ap_mode": false,
   "dhcp": true,
@@ -10,7 +9,6 @@
   "netmask": "255.255.255.0",
   "gateway": "192.168.1.1",
   "dns_server": "8.8.8.8",
-  "antenna_bands": [0,0,0,0,0,0,0,0],
-  "antenna_names": ["Antenna 1","Antenna 2","Antenna 3","Antenna 4","Antenna 5","Antenna 6","Antenna 7","Antenna 8"],
-  "radio_names": ["Radio 1", "Radio 2"]
+  "radio_number": "1",
+  "switch_ip": "192.168.1.166"
 }
