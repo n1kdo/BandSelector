@@ -6,8 +6,8 @@
 	(paper "A")
 	(title_block
 		(title "Band Selector")
-		(date "2024-09-26")
-		(rev "0.0.5")
+		(date "2024-10-26")
+		(rev "0.0.6")
 		(company "N1KDO")
 		(comment 1 "See license")
 	)
