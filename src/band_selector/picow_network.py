@@ -311,7 +311,7 @@ class PicowNetwork:
                 await self.connect()
             else:
                 logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
-            await sleep(5)  # check network every 5 seconds
+            await sleep(10)  # check network every 10 seconds
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
     def get_message(self):

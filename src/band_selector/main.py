@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024 J. B. Otterson N1KDO.'
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
 #
 # Copyright 2022, 2024 J. B. Otterson N1KDO.
@@ -30,9 +30,6 @@ __version__ = '0.0.1'
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
-from asyncio import sleep
-
-from select import select
 
 from alcd import LCD
 from button import Button
@@ -42,9 +39,7 @@ from http_server import (HttpServer,
                          api_remove_file_callback,
                          api_upload_file_callback,
                          api_get_files_callback)
-from picow_network import PicowNetwork
 from ringbuf_queue import RingbufQueue
-import uaiohttpclient as aiohttp
 from utils import milliseconds, upython, safe_int, num_bits_set
 import micro_logging as logging
 
@@ -52,9 +47,15 @@ if upython:
     import machine
     import network
     import uasyncio as asyncio
+    from uasyncio import sleep
+    from picow_network import PicowNetwork
 else:
     import asyncio
     from not_machine import machine
+    from asyncio import sleep
+
+import uaiohttpclient as aiohttp
+
 
 BANDS = ['NoBand', '160M',  '80M',  '60M',  '40M',  '30M',  '20M',  '17M',  '15M',  '12M',  '10M',   '6M',  '2M', '70cm', 'NoBand', 'NoBand']
 MASKS = [  0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,   0x0000,   0x0000]
@@ -99,11 +100,10 @@ msgq = RingbufQueue(32)
 
 # other I/O setup
 onboard = machine.Pin('LED', machine.Pin.OUT, value=1)  # turn on right away
-# morse_led = onboard  # TODO FIXME does this even need Morse?
 red_led = machine.Pin(0, machine.Pin.OUT, value=0)  # Red LED on GPIO0 / pin 1
 #   reset_button = machine.Pin(1, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO1 / pin 2
 
-# pushbuttons on display board on GPIO10-13
+# push buttons on display board on GPIO10-13
 sw1 = machine.Pin(13, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO13 / pin 17
 sw2 = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO12 / pin 16
 sw3 = machine.Pin(11, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO11 / pin 15
@@ -200,26 +200,29 @@ async def api_response(resp, msg, msgq):
     """
     payload = await resp.read()
     await resp.aclose()
+    logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
     new_msg = (msg[0], data)
     await msgq.put(new_msg)
 
 
-def call_api(config, endpoint, msg, msgq):
+async def call_api(config, endpoint, msg, msgq):
     # TODO this is too slow. but it does work.
     t0 = milliseconds()
     url = f'http://{config.get('switch_ip', 'localhost')}{endpoint}'
-    #logging.info(f'calling api {url} at {milliseconds()}', 'main:call_api')
-    resp = yield from aiohttp.request("GET", url)
+    logging.info(f'calling api {url} at {milliseconds()}', 'main:call_api')
+    #resp = yield from aiohttp.request("GET", url)
+    resp = await aiohttp.request("GET", url)
     http_status = resp.status
     t1 = milliseconds()
-    #logging.info(f'api call to {endpoint} took {t1 - t0} ms')
+    logging.info(f'api call to {endpoint} took {t1 - t0} ms', 'main:call_api')
     msg = (msg[0], (http_status, 'no response'))
     asyncio.create_task(api_response(resp, msg, msgq))
 
 
 async def call_select_antenna_api(config, new_antenna, msg, msgq):
     radio_number = config.get('radio_number')
+    logging.debug(f'attempting to select antenna {new_antenna}', 'main:call_select_antenna_api')
     endpoint = f'/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
     await call_api(config, endpoint, msg, msgq)
 
@@ -331,7 +334,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
     else:
         http_status = 400
         response = b'not permitted except on PICO-W'
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -342,6 +345,13 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
+
+async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
+    await power_on()
+    response = b'ok'
+    http_status = 200
+    bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+    return bytes_sent, http_status
 
 def find_band_antennae(new_band_number: int) -> [int]:
     antennas = []
@@ -363,7 +373,7 @@ def set_inhibit(inhibit):
 
 async def power_on():
     poweron_pin.on()
-    await sleep(0.50)
+    await sleep(0.100)
     poweron_pin.off()
 
 
@@ -427,7 +437,7 @@ async def msg_loop(q):
             logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
             await asyncio.sleep_ms(50)
         elif m0 == MSG_BAND_CHANGE:  # band change detected
-            print(f'band change, power = {radio_power}')
+            logging.debug(f'band change, power = {radio_power}', 'main:msg_loop')
             if not radio_power:
                 m1 = -2
             #logging.info(f'band change, sense = {m1}', 'main:msg_loop')
@@ -446,27 +456,30 @@ async def msg_loop(q):
             except json.decoder.JSONDecodeError as jde:
                 logging.exception('cannot decode json', 'main:msg_loop', jde)
                 switch_data = {}
-            # print(switch_data)
             antenna_names = switch_data.get('antenna_names', ['','','','','','','',''])
             antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
             radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
             radio_number = int(config.get('radio_number', -1))
             radio_name = radio_names[radio_number-1]
+            current_antenna = -1
+            if radio_number == 1:
+                current_antenna = switch_data.get('radio_1_antenna', -1)
+            elif radio_number == 2:
+                current_antenna = switch_data.get('radio_2_antenna', -1)
+            if 1 <= current_antenna <= 8:
+                current_antenna_name = antenna_names[current_antenna - 1]
+            else:
+                current_antenna_name = f'unknown antenna {current_antenna}'
+            await msgq.put((MSG_LCD_LINE1, current_antenna_name))
+
             if not radio_power:
                 await msgq.put((MSG_LCD_LINE0, f'{radio_name} no radio'))
                 set_inhibit(1)
             else:
                 await msgq.put((MSG_LCD_LINE0, radio_name + ' ' + BANDS[current_band_number]))
-                if radio_number == 1:
-                    current_antenna = switch_data.get('radio_1_antenna', -1)
-                elif radio_number == 2:
-                    current_antenna = switch_data.get('radio_2_antenna', -1)
                 if current_antenna == -1:
-                    current_antenna_name = 'unknown antenna -1'
                     set_inhibit(1)
-                    await msgq.put((MSG_LCD_LINE1, current_antenna_name))
                 else:
-                    current_antenna_name = antenna_names[current_antenna-1]
                     if MASKS[current_band_number] & antenna_bands[current_antenna-1]:
                         set_inhibit(0)
                         await msgq.put((MSG_LCD_LINE1, current_antenna_name))
@@ -493,11 +506,10 @@ async def msg_loop(q):
         t1 = milliseconds()
         if logging.loglevel == logging.DEBUG:
             logging.debug(f'   Message {m0} handling took {t1-t0} ms.', 'main:msg_loop')
-        # await asyncio.sleep(10)  # don't need, the get (above) is awaited.
 
 
 async def net_msg_func(message:str, msg_status=0) -> None:
-    logging.debug(f'network message: "{message}", {msg_status}')
+    logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     lines = message.split('\n')
     if len(lines) == 1:
         await msgq.put((MSG_LCD_LINE1, lines[0]))
@@ -532,6 +544,7 @@ async def main():
     http_server.add_uri_callback('/api/rename_file', api_rename_file_callback)
     http_server.add_uri_callback('/api/restart', api_restart_callback)
     http_server.add_uri_callback('/api/status', api_status_callback)
+    http_server.add_uri_callback('/api/power_on_radio', api_power_on_radio_callback)
 
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     web_server = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
@@ -559,9 +572,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    # logging.loglevel = logging.DEBUG
-    logging.loglevel = logging.INFO  # DEBUG
     logging.loglevel = logging.DEBUG  # TODO FIXME
+    logging.loglevel = logging.INFO
     logging.info('starting', 'main:__main__')
     try:
         asyncio.run(main())
