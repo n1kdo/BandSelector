@@ -8,15 +8,15 @@ The circuit boards came from Oshpark.com.
 
 ## Display Board Bill of Materials
 
-| id           | desc                             | mfg               | part                      |
-|--------------|----------------------------------|-------------------|---------------------------|
-| C1           | 1 uF 35 V tantalum               | Vishay            | 199D105X9035A2B1E3        |
-| J1           | 1x16 right angle sip connector   | Molex             | 22-28-8160                |
-| R1           | 220 ohm 1/4 watt resistor        | ?                 | ?                         |
-| RV1          | 10K ohm trim pot                 | Amphenol Piher    | N6-L50T0C-103             |
-| SW1, 2, 3, 4 | Tactile Pushbutton               | Same Sky          | TS02-66-130-BK-100-LCR-D  |
-| U1           | 2x20 backit LCD display 3.3 volt | New Haven Display | NHD-0220FZ-FSW-GBW-P-33V3 |
-| PCB          | N1KDO Display Board PCB V 0.0.4  |                   |                           |
+| id           | desc                                                 | mfg              | part                      |
+|--------------|------------------------------------------------------|------------------|---------------------------|
+| C1           | 1 uF 35 V tantalum                                   | Vishay           | 199D105X9035A2B1E3        |
+| J1           | 1x16 right angle sip connector                       | Molex            | 22-28-8160                |
+| R1           | Carbon Film Resistors - Through Hole 1/4W 220 Ohm 5% | Yageo            | CFR-25JB-52-220R          |
+| RV1          | 10K ohm trim pot                                     | Amphenol Piher   | N6-L50T0C-103             |
+| SW1, 2, 3, 4 | Tactile Pushbutton                                   | Same Sky         | TS02-66-130-BK-100-LCR-D  |
+| U1           | 2x20 backit LCD display 3.3 volt                     | New Haven Display | NHD-0220FZ-FSW-GBW-P-33V3 |
+| PCB          | N1KDO Display Board PCB V 0.0.4                      |                  |                           |
 
 ## Main Board Bill of Materials
 
