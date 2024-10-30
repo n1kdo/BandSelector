@@ -15,10 +15,8 @@ How it it different than commercial-off-the-shelf solutions?
 
 The project is in two pieces:
 
-  * The Antenna Switch Controller provides a IOT endpoint for managing a 2x6 or 2x8
-    antenna switch:
-    * software: https://github.com/n1kdo/AntennaSwitchControl
-    * hardware: https://github.com/n1kdo/16-relays
+  * The [Antenna Switch Controller](https://github.com/n1kdo/AntennaSwitchControl) provides a IOT endpoint for managing a 2x6 or 2x8
+    antenna switch: https://github.com/n1kdo/AntennaSwitchControl
   * The Band Selector interfaces with a K3 or K4 radio, and provides the following functions:
     * Decodes selected bands from Elecraft radio AUX jack.
     * Requests antenna from the controller.
@@ -29,6 +27,7 @@ The project is in two pieces:
 This repository contains the hardware and software for The Band Selector: 
   * `kicad` folder contains the electronic design.
   * `src` folder contains the software.
+  * [Bill of Materials](BOM.md "Bill of Materials")
 
 Note that the software is licensed under BSD "2-Clause" license, except as where noted.
 
