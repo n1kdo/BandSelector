@@ -1,4 +1,3 @@
-
 # Bill of Materials for Band Selector
 
 This is the Bill of Materials for the N1KDO Band Selector.
@@ -20,7 +19,6 @@ The circuit boards came from Oshpark.com.
 | PCB          | N1KDO Display Board PCB V 0.0.4  |                   |                           |
 
 ## Main Board Bill of Materials
-
 
 | id                | desc                                                                    | mfg                   | part             |
 |-------------------|-------------------------------------------------------------------------|-----------------------|------------------|
@@ -44,10 +42,10 @@ The circuit boards came from Oshpark.com.
 | R1,R8             | Carbon Film Resistors - Through Hole 1/4W 100 Ohm 5%                    | Yageo                 | CFR-25JB-52-100R |
 | R2,R3,R4,R5,R6,R9 | Carbon Film Resistors - Through Hole 1/4W 10K Ohm 5%                    | Yageo                 | CFR-25JB-52-10K  |
 | R10               | Carbon Film Resistors - Through Hole 1/4W 330 Ohm 5%                    | Yageo                 | CFR-25JB-52-330R |
-| R11               | Carbon Film Resistors - Through Hole 1/4W 330 Ohm 5%                    | Yageo                 | CFR-25JB-52-330R |
+| R11               | Carbon Film Resistors - Through Hole 1/4W 470 Ohm 5%                    | Yageo                 | CFR-25JB-52-470R |
 | U1                | Single Board Computers Raspberry Pi Pico W                              | Raspberry Pi          | SC0918           |
 | U2                | Linear Voltage Regulators 5.0V 1.5A Positive                            | STMicroelectronics    | L7805CV          | 
 | PCB               | N1KDO Band Selector Board PCB V 0.0.4                                   |                       |                  |
 | Enclosure         | Enclosures, Boxes, & Cases FR ABS w/Flanged Lid 7.6x4.4x2.2" Black      | Hammond Manufacturing | 1591XXEFLBK      |
 
-n1kdo 20241029
+n1kdo 20241030
