@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP N6-L50T0C-103
+D Trimmer Resistors - Through Hole 10Kohms 6mm Top adj
+K
+F https://cz.mouser.com/datasheet/2/18/09-N6v03-1499128.pdf
+$ENDCMP
+#
+#End Doc Library

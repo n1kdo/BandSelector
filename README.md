@@ -2,6 +2,17 @@
 
 This project is intended to operate a remote antenna switch.
 
+How it it different than commercial-off-the-shelf solutions?
+* Direct interface with Elecraft 15-Pin interface
+* Wireless! It runs over Wifi, no wiring, no lightning arrestors
+* Automatic TX Inhibit prevents TX into wrong/no antenna
+* Cheap cheap
+* Open Source Hardware and Software.  Do what you will with attribution.
+
+![Band Selector](images/band-selector.jpg "Band Selector") Band Selector
+
+![With K3](images/with-k3.jpg "Interfaced with K3") Interfaced with K3
+
 The project is in two pieces:
 
   * The Antenna Switch Controller provides a IOT endpoint for managing a 2x6 or 2x8
@@ -12,7 +23,8 @@ The project is in two pieces:
     * Decodes selected bands from Elecraft radio AUX jack.
     * Requests antenna from the controller.
     * If the requested band antenna cannot be selected, activate the radios'  TX INHIBIT
-      logic to prevent transmit.  
+      logic to prevent transmit.
+    * The Band Selector includes a 2nd circuit board for the display.
   
 This repository contains the hardware and software for The Band Selector: 
   * `kicad` folder contains the electronic design.
