@@ -61,14 +61,16 @@ class PicowNetwork:
     def __init__(self,
                  config: dict,
                  default_ssid:str='PICO-W',
-                 default_secret='PICO-W',
+                 default_secret:str='PICO-W',
                  message_func=None) -> None:
         self._keepalive = False
         self._message_func = message_func
-        self._ssid = config.get('SSID') or ''
+        self._default_ssid = default_ssid
+        self._default_secret = default_secret
+        self._ssid = config.get('SSID') or default_ssid
         if len(self._ssid) == 0 or len(self._ssid) > 64:
             self._ssid = default_ssid
-        self._secret = config.get('secret') or ''
+        self._secret = config.get('secret') or default_secret
         if self._secret is None or len(self._secret) == 0:
             self._secret = default_secret
         if len(self._secret) > 64:
@@ -136,6 +138,12 @@ class PicowNetwork:
                 security = 0
             else:
                 security = 0x00400004  # CYW43_AUTH_WPA2_AES_PSK
+
+            mac_addr = self._wlan.config('mac')
+            if mac_addr is not None:
+                mac_addr = mac_addr.encode().upper()
+                logging.info(f'mac address = {mac_addr}')
+                # TODO: adjust ssid to include MAC.
             self._wlan.config(ssid=self._ssid, key=self._secret, security=security)
             self._wlan.active(True)
             logging.info(f'  wlan.active()={self._wlan.active()}', 'PicowNetwork:connect_to_network')
@@ -187,9 +195,10 @@ class PicowNetwork:
 
             max_wait = 15
             st = ''
-            logging.info(f'...connecting to "{self._ssid}"...', 'PicowNetwork:connect_to_network')
             await self.set_message(f'Connecting to\n{self._ssid}')
             self._wlan.connect(self._ssid, self._secret)
+            ssid = self._wlan.config('ssid')
+            logging.info(f'...connecting to "{ssid}"...', 'PicowNetwork:connect_to_network')
             last_wl_status = -9
             while max_wait > 0:
                 wl_status = self._wlan.status()
@@ -210,10 +219,11 @@ class PicowNetwork:
         onboard.on()  # turn on the LED, WAN is up.
         wl_config = self._wlan.ipconfig('addr4')  # get use str param name.
         ip_address = wl_config[0]
+        ssid = self._wlan.config('ssid')
         if self._access_point_mode:
-            msg = f'Access Point...\n{ip_address}'
+            msg = f'{ssid}\nAP: {ip_address}'
         else:
-            msg = f'IP Address:\n{ip_address}'
+            msg = f'{ssid}\n{ip_address}'
         await self.set_message(msg, wl_status)
         return
 
