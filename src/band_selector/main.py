@@ -34,6 +34,7 @@ import json
 from alcd import LCD
 from button import Button
 from fourbits import FourBits
+from gpio_pin import GPIO_Pin
 from http_server import (HttpServer,
                          api_rename_file_callback,
                          api_remove_file_callback,
@@ -132,7 +133,7 @@ band_detector = FourBits([band3, band2, band1, band0], msgq, (MSG_BAND_CHANGE, 0
 poweron_pin = machine.Pin(21, machine.Pin.OUT, value=0)  # power on control on GPIO21
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
 
-Button(powersense, msgq, (MSG_POWER_SENSE, 0), (MSG_POWER_SENSE, 1))
+GPIO_Pin(powersense, msgq, (MSG_POWER_SENSE, 0), (MSG_POWER_SENSE, 1))
 
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
@@ -461,9 +462,13 @@ async def msg_loop(q):
         m0 = msg[0]
         m1 = msg[1]
         if MSG_BTN_1 <= m0 <= MSG_BTN_2:
+            if m1 == 0:
+                msg = f'button {m0} press'
+            else:
+                msg = f'button {m0} long press'
             # button 1-2 on or off.
             # right now I just send a message to the lcd
-            await q.put((MSG_LCD_LINE0, f'button {m0} state {m1}'))
+            await q.put((MSG_LCD_LINE0, msg))
         elif m0 == MSG_BTN_3:
             if m1 == 0:
                 current_band_number += 1

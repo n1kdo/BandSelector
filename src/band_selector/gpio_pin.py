@@ -24,19 +24,17 @@
 import asyncio
 from machine import Pin
 
-class Button:
+class GPIO_Pin:
     debounce_ms = 50
-    long_press_count = 10
 
-    def __init__(self, pin, queue, short_press_message, long_press_message):
+    def __init__(self, pin, queue, low_msg, hi_msg):
         if isinstance(pin, int):
             pin = Pin(pin, mode=Pin.IN, pull=Pin.PULL_UP)
         self._pin = pin
         self._queue = queue
-        self._short_msg = short_press_message
-        self._long_msg = long_press_message
-        self._last = self._pin.value()  # or 1
-        self._timer = 0
+        self._low_msg = low_msg
+        self._hi_msg = hi_msg
+        self._last = None # always send an event after init.
         asyncio.create_task(self._edge_checker())
 
     async def _edge_checker(self):
@@ -44,16 +42,10 @@ class Button:
             latest = self._pin.value()
             if latest != self._last:  # is it different than the last time?
                 # yeah, do something
-                if latest == 1:  # button was released
-                    print(latest, self._last, self._timer)
-                    await self._queue.put(self._long_msg if self._timer >= Button.long_press_count else self._short_msg)
+                await self._queue.put(self._hi_msg if latest else self._low_msg)
                  # and reset
                 self._last = latest
-                self._timer = 0
-            else:  # it is the same value as last time.
-                self._timer += 1
-            await asyncio.sleep_ms(Button.debounce_ms)
+            await asyncio.sleep_ms(GPIO_Pin.debounce_ms)
 
     def invalidate(self):
         self._last = None
-        self._timer = 0

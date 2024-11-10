@@ -39,6 +39,7 @@ FILES_LIST = [
     'alcd.py',
     'button.py',
     'fourbits.py',
+    'gpio_pin.py',
     'http_server.py',
     'main.py',
     'micro_logging.py',
