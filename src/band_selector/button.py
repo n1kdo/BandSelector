@@ -45,7 +45,6 @@ class Button:
             if latest != self._last:  # is it different than the last time?
                 # yeah, do something
                 if latest == 1:  # button was released
-                    print(latest, self._last, self._timer)
                     await self._queue.put(self._long_msg if self._timer >= Button.long_press_count else self._short_msg)
                  # and reset
                 self._last = latest

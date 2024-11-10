@@ -57,9 +57,10 @@ else:
 
 import uaiohttpclient as aiohttp
 
-
-BANDS = ['NoBand', '160M',  '80M',  '60M',  '40M',  '30M',  '20M',  '17M',  '15M',  '12M',  '10M',   '6M',  '2M', '70cm', 'NoBand', 'NoBand']
-MASKS = [  0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,   0x0000,   0x0000]
+BANDS = ['NoBand', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M', '10M', '6M', '2M', '70cm', 'NoBand',
+         'NoBand']
+MASKS = [0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,
+         0x0000, 0x0000]
 #               0       1       2       3       4       5       6       7        8      9      10      11     12      13        14        15
 
 # this list maps band indexes to the value of the 4-bit band select outputs.
@@ -73,8 +74,8 @@ ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
                      7,  # 0110 -> 17M
                      8,  # 0111 -> 15M
                      9,  # 1000 -> 12M
-                     10, # 1001 -> 10M
-                     11, # 1010 ->  6M
+                     10,  # 1001 -> 10M
+                     11,  # 1010 ->  6M
                      0,  # 1011 -> invalid
                      0,  # 1100 -> invalid
                      0,  # 1101 -> invalid
@@ -128,11 +129,9 @@ band0 = machine.Pin(17, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND0 data input
 band1 = machine.Pin(18, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND1 data input on GPIO18
 band2 = machine.Pin(19, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND2 data input on GPIO19
 band3 = machine.Pin(20, machine.Pin.IN, machine.Pin.PULL_UP)  # BAND3 data input on GPIO20
-
 band_detector = FourBits([band3, band2, band1, band0], msgq, (MSG_BAND_CHANGE, 0))
 poweron_pin = machine.Pin(21, machine.Pin.OUT, value=0)  # power on control on GPIO21
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
-
 GPIO_Pin(powersense, msgq, (MSG_POWER_SENSE, 0), (MSG_POWER_SENSE, 1))
 
 CONFIG_FILE = 'data/config.json'
@@ -158,21 +157,20 @@ band_antennae = []  # list of antennas that could work on the current band.
 radio_power = False
 
 # well-loved status messages
-radio_status = ['','']
-network_status = ['','']
+radio_status = ['', '']
+network_status = ['', '']
 
 # menu state machine data
 RADIO_STATUS_STATE = 0
 NETWORK_STATUS_STATE = 1
-MENU_MODE_STATE_BASE = 200
-MENU_EDIT_STATE_BASE = 300
+MENU_MODE_STATE = 2
+MENU_EDIT_STATE = 3
 MENUS = [
     ('Network Mode', ['Station', 'Access Point']),
     ('Restart?', ['No', 'Yes']),
 ]
 
 menu_state = RADIO_STATUS_STATE
-menu_edit_item = 0
 current_antenna_list_index = 0
 
 
@@ -403,7 +401,7 @@ def find_band_antennae(new_band_number: int) -> [int]:
 
 def set_inhibit(inhibit):
     inhibit_pin.value(inhibit)
-    red_led.value(inhibit)  #  TODO FIXME DEBUG
+    red_led.value(inhibit)
 
 
 async def power_on():
@@ -440,6 +438,11 @@ async def update_radio_display(line1=None, line2=None):
         await msgq.put((MSG_LCD_LINE1, line2))  # update display
 
 
+async def show_radio_display():
+    await msgq.put((MSG_LCD_LINE0, radio_status[0]))  # update display
+    await msgq.put((MSG_LCD_LINE1, radio_status[1]))  # update display
+
+
 async def update_network_display(line1=None, line2=None):
     global network_status
     if line1 is not None:
@@ -450,10 +453,33 @@ async def update_network_display(line1=None, line2=None):
         await msgq.put((MSG_LCD_LINE1, line2))  # update display
 
 
+async def show_network_display():
+    await msgq.put((MSG_LCD_LINE0, network_status[0]))  # update display
+    await msgq.put((MSG_LCD_LINE1, network_status[1]))  # update display
+
+
+async def show_edit_display(menu_number, item_number):
+    current_menu = MENUS[menu_number]
+    menu_name = current_menu[0]
+    item_value = current_menu[1][item_number]
+
+    if menu_state == MENU_MODE_STATE:
+        menu_name = f'>{menu_name:^18s}<'
+
+    if menu_state == MENU_EDIT_STATE:
+        item_value = f'>{item_value:^18s}<'
+
+    await msgq.put((MSG_LCD_LINE0, menu_name))  # update display with menu name
+    await msgq.put((MSG_LCD_LINE1, item_value))  # update display with menu item name
+
+
 async def msg_loop(q):
     global current_antenna, current_antenna_name, current_band_number, radio_name, \
         antenna_names, antenna_bands, band_antennae, radio_power, current_antenna_list_index, \
-        menu_state, menu_edit_item
+        menu_state
+
+    menu_number = 0
+    item_number = 0
 
     while True:
         msg = await q.get()
@@ -461,46 +487,87 @@ async def msg_loop(q):
         logging.debug(f'msg received: {msg}', 'main:msg_loop')
         m0 = msg[0]
         m1 = msg[1]
-        if MSG_BTN_1 <= m0 <= MSG_BTN_2:
-            if m1 == 0:
-                msg = f'button {m0} press'
-            else:
-                msg = f'button {m0} long press'
-            # button 1-2 on or off.
-            # right now I just send a message to the lcd
-            await q.put((MSG_LCD_LINE0, msg))
-        elif m0 == MSG_BTN_3:
-            if m1 == 0:
-                current_band_number += 1
-                if current_band_number >= len(BANDS):
-                    current_band_number = 1
-                await new_band(current_band_number)
-        elif m0 == MSG_BTN_4:
-            if m1 == 0:
-                current_band_number -= 1
-                if current_band_number < 1:
-                    current_band_number = len(BANDS) -1
-                await new_band(current_band_number)
+        if m0 == 0:
+            logging.error(f'impossible message 0')
+        elif m0 == MSG_BTN_1:  # MENU button
+            if m1 == 0:  # short press
+                if menu_state == RADIO_STATUS_STATE:
+                    menu_state = MENU_MODE_STATE
+                    await show_edit_display(menu_number, item_number)
+                else:  # any other state, return to RADIO_STATUS_STATE
+                    menu_state = RADIO_STATUS_STATE
+                    await show_radio_display()
+        elif m0 == MSG_BTN_2:  # EDIT button
+            if m1 == 0:  # short press
+                if menu_state == RADIO_STATUS_STATE:
+                    menu_state = NETWORK_STATUS_STATE
+                    await show_network_display()
+                elif menu_state == MENU_MODE_STATE:  # in EDIT mode
+                    menu_state = MENU_EDIT_STATE
+                    await show_edit_display(menu_number, item_number)
+                elif menu_state ==  MENU_EDIT_STATE:  # in EDIT mode, editing
+                    # this is when a change actually happened.
+                    #logging.info(f'edited data, menu={menu_number}, item selected = {item_number}')
+                    # this should be bound to the MENUS data, not hardcoded literals 0|1...
+                    if menu_number == 0:
+                        select_network_mode(item_number)
+                    elif menu_number == 1:
+                        select_restart_mode(item_number)
+                    # switch out of edit value mode
+                    menu_state = MENU_MODE_STATE
+                    await show_edit_display(menu_number, item_number)
+        elif m0 == MSG_BTN_3:  # UP button
+            if m1 == 0:  # short press
+                if menu_state == RADIO_STATUS_STATE:
+                    # next antenna for this band.
+                    pass  # TODO
+                elif menu_state == MENU_MODE_STATE:
+                    menu_number += 1
+                    if menu_number >= len(MENUS):
+                        menu_number = 0
+                    await show_edit_display(menu_number, item_number)
+                elif menu_state == MENU_EDIT_STATE:  # in EDIT mode, editing
+                    logging.info(f'UP button in edit edit mode. {menu_number} {item_number}')
+                    logging.info(f'menu_state = {menu_state}')
+                    logging.info(f'menu: {MENUS[menu_number]}')
+                    item_number += 1
+                    if item_number >= len(MENUS[menu_number][1]):
+                        item_number = 0
+                    await show_edit_display(menu_number, item_number)
+
+        elif m0 == MSG_BTN_4:  # DOWN button
+            if m1 == 0:  # short press
+                if menu_state == RADIO_STATUS_STATE:
+                    # previous antenna for this band.
+                    pass  # TODO
+                elif menu_state == MENU_MODE_STATE:
+                    menu_number -= 1
+                    if menu_number < 0:
+                        menu_number = len(MENUS) - 1
+                    await show_edit_display(menu_number,item_number)
+                elif menu_state == MENU_EDIT_STATE:  # in EDIT mode, editing
+                    item_number -= 1
+                    if item_number < 0:
+                        item_number = len(MENUS[menu_number][1]) - 1
+                    await show_edit_display(menu_number, item_number)
+
         elif m0 == MSG_POWER_SENSE:  # power sense changed
             if m1 == 0:
                 # detect missing radio.  do something about it.
                 radio_power = True
             else:
                 radio_power = False
-
         elif m0 == MSG_NETWORK_UPDOWN:
             # network up/down
-            if m1 == 1: # network is up!
+            if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
                 await call_api(config, '/api/status', (201, None), msgq)
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
-            await asyncio.sleep_ms(50)
         elif m0 == MSG_LCD_LINE1:  # LCD line 2
             lcd[1] = f'{m1:^20s}'
             logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
-            await asyncio.sleep_ms(50)
         elif m0 == MSG_BAND_CHANGE:  # band change detected
             logging.debug(f'band change, power = {radio_power}', 'main:msg_loop')
             if not radio_power:
@@ -517,7 +584,6 @@ async def msg_loop(q):
                     logging.warning(msg)
                     await update_radio_display(msg, None)
                     set_inhibit(1)
-
         elif m0 == MSG_STATUS_RESPONSE:  # http status response
             http_status = m1[0]
             try:
@@ -525,11 +591,11 @@ async def msg_loop(q):
             except json.decoder.JSONDecodeError as jde:
                 logging.exception('cannot decode json', 'main:msg_loop', jde)
                 switch_data = {}
-            antenna_names = switch_data.get('antenna_names', ['','','','','','','',''])
+            antenna_names = switch_data.get('antenna_names', ['', '', '', '', '', '', '', ''])
             antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
             radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
             radio_number = int(config.get('radio_number', -1))
-            radio_name = radio_names[radio_number-1]
+            radio_name = radio_names[radio_number - 1]
             current_antenna = -1
             if radio_number == 1:
                 current_antenna = switch_data.get('radio_1_antenna', -1)
@@ -542,7 +608,7 @@ async def msg_loop(q):
             await update_radio_display(None, current_antenna_name)
 
             if not radio_power:
-                msg =  f'{radio_name} no radio'
+                msg = f'{radio_name} no radio'
                 logging.warning(msg)
                 await update_radio_display(msg, None)
                 set_inhibit(1)
@@ -552,7 +618,7 @@ async def msg_loop(q):
                 if current_antenna == -1:
                     set_inhibit(1)
                 else:
-                    if MASKS[current_band_number] & antenna_bands[current_antenna-1]:
+                    if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
                         set_inhibit(0)
                         await update_radio_display(None, current_antenna_name)
                     else:
@@ -566,7 +632,7 @@ async def msg_loop(q):
                 await call_api(config, '/api/status', (201, None), msgq)
             elif 400 <= http_status <= 499:
                 if len(band_antennae) == 0:
-                    # logging.warning(f'no antenna available for band {BANDS[new_band_number]}')
+                    logging.warning(f'no antenna available for band ')
                     await update_radio_display(None, f'*{payload}')
                     set_inhibit(1)
                 else:
@@ -577,10 +643,10 @@ async def msg_loop(q):
             logging.warning(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
         t1 = milliseconds()
         if logging.loglevel == logging.DEBUG:
-            logging.debug(f'   Message {m0} handling took {t1-t0} ms.', 'main:msg_loop')
+            logging.debug(f'   Message {m0} handling took {t1 - t0} ms.', 'main:msg_loop')
 
 
-async def net_msg_func(message:str, msg_status=0) -> None:
+async def net_msg_func(message: str, msg_status=0) -> None:
     global network_status
     logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     lines = message.split('\n')

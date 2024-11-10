@@ -122,7 +122,7 @@ class PicowNetwork:
             try:
                 await self.set_message(f'Setting hostname "{self._hostname}"')
                 logging.info(f'  Setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
-                network._hostname(self._hostname)
+                network.hostname(self._hostname)
             except ValueError:
                 await self.set_message('Failed to set hostname.', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
@@ -140,11 +140,13 @@ class PicowNetwork:
                 security = 0x00400004  # CYW43_AUTH_WPA2_AES_PSK
 
             mac_addr = self._wlan.config('mac')
+            mac = ''
             if mac_addr is not None:
-                mac_addr = mac_addr.encode().upper()
-                logging.info(f'mac address = {mac_addr}')
-                # TODO: adjust ssid to include MAC.
-            self._wlan.config(ssid=self._ssid, key=self._secret, security=security)
+                for b in mac_addr:
+                    mac = mac + f'{b:02x}'
+                if len(mac) == 12:
+                    self._default_ssid = self._default_ssid + '-' + mac[6:]
+            self._wlan.config(ssid=self._default_ssid, key=self._default_secret, security=security)
             self._wlan.active(True)
             logging.info(f'  wlan.active()={self._wlan.active()}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ssid={self._wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
