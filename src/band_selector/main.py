@@ -279,6 +279,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         config = read_config()
         dirty = False
         errors = False
+        problems = []
         web_port = args.get('web_port')
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
@@ -287,6 +288,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 dirty = True
             else:
                 errors = True
+                problems.append('web_port')
         ssid = args.get('SSID')
         if ssid is not None:
             if 0 < len(ssid) < 64:
@@ -294,6 +296,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 dirty = True
             else:
                 errors = True
+                problems.append('ssid')
         secret = args.get('secret')
         if secret is not None:
             if 8 <= len(secret) < 32:
@@ -301,6 +304,15 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 dirty = True
             else:
                 errors = True
+                problems.append('secret')
+        hostname = args.get('hostname')
+        if hostname is not None:
+            if 0 < len(hostname) < 64:
+                config['hostname'] = hostname
+                dirty = True
+            else:
+                errors = True
+                problems.append('hostname')
         ap_mode_arg = args.get('ap_mode')
         if ap_mode_arg is not None:
             ap_mode = True if ap_mode_arg == '1' else False
@@ -331,8 +343,9 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if switch_ip is not None:
             config['switch_ip'] = switch_ip
             dirty = True
-        radio_number = safe_int(args.get('radio_number'), -1)
+        radio_number = args.get('radio_number')
         if radio_number is not None:
+            radio_number = safe_int(radio_number, -1)
             if 1 <= radio_number <= 2:
                 config['radio_number'] = radio_number
                 dirty = True
@@ -346,6 +359,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
         else:
             response = b'parameter out of range\r\n'
+            logging.error(f'problems {problems}', 'main:api_config_callback')
             http_status = 400
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
@@ -425,6 +439,21 @@ async def new_band(new_band_number):
         await update_radio_display(None, '')
         current_antenna_list_index = 0
         await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (202, (0, '')), msgq)
+
+
+async def change_band_antenna(up=True):
+    global current_antenna_list_index
+    if len(band_antennae) <= 1:
+        return False
+    if up:
+        current_antenna_list_index += 1
+        if current_antenna_list_index >= len(band_antennae):
+            current_antenna_list_index = 0
+    else:  # down, yeah
+        current_antenna_list_index -= 1
+        if current_antenna_list_index < 0:
+            current_antenna_list_index = len(band_antennae) -1
+    await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (202, (0, '')), msgq)
 
 
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
@@ -520,7 +549,7 @@ async def msg_loop(q):
             if m1 == 0:  # short press
                 if menu_state == RADIO_STATUS_STATE:
                     # next antenna for this band.
-                    pass  # TODO
+                    await change_band_antenna(up=True)
                 elif menu_state == MENU_MODE_STATE:
                     menu_number += 1
                     if menu_number >= len(MENUS):
@@ -534,12 +563,11 @@ async def msg_loop(q):
                     if item_number >= len(MENUS[menu_number][1]):
                         item_number = 0
                     await show_edit_display(menu_number, item_number)
-
         elif m0 == MSG_BTN_4:  # DOWN button
             if m1 == 0:  # short press
                 if menu_state == RADIO_STATUS_STATE:
                     # previous antenna for this band.
-                    pass  # TODO
+                    await change_band_antenna(up=False)
                 elif menu_state == MENU_MODE_STATE:
                     menu_number -= 1
                     if menu_number < 0:
@@ -550,7 +578,6 @@ async def msg_loop(q):
                     if item_number < 0:
                         item_number = len(MENUS[menu_number][1]) - 1
                     await show_edit_display(menu_number, item_number)
-
         elif m0 == MSG_POWER_SENSE:  # power sense changed
             if m1 == 0:
                 # detect missing radio.  do something about it.
@@ -564,14 +591,16 @@ async def msg_loop(q):
                 await call_api(config, '/api/status', (201, None), msgq)
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
+            # await asyncio.sleep_ms(50)
             logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
         elif m0 == MSG_LCD_LINE1:  # LCD line 2
             lcd[1] = f'{m1:^20s}'
+            # await asyncio.sleep_ms(50)
             logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
         elif m0 == MSG_BAND_CHANGE:  # band change detected
             logging.debug(f'band change, power = {radio_power}', 'main:msg_loop')
             if not radio_power:
-                await update_radio_display(f'{radio_name} power off', None)
+                await update_radio_display(f'{radio_name} No Power', None)
                 set_inhibit(1)
             else:
                 logging.info(f'band change, sense = {m1}', 'main:msg_loop')
@@ -613,6 +642,9 @@ async def msg_loop(q):
                 await update_radio_display(msg, None)
                 set_inhibit(1)
             else:
+                if current_band_number <1 or current_band_number > 13:
+                    # this does not look like a valid band choice, read the band data again.
+                    band_detector.invalidate()
                 msg = f'{radio_name} {BANDS[current_band_number]}'
                 await update_radio_display(msg, None)
                 if current_antenna == -1:

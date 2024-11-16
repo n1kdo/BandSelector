@@ -105,4 +105,4 @@ class LCD:  # LCD objects appear as read/write lists
                         self.lcd_byte(ord(thisbyte), LCD.CHR)
                         await asyncio.sleep_ms(0)  # Reschedule ASAP
                     self.dirty[row] = False
-            await asyncio.sleep_ms(20)  # Give other coros a look-in
+                await asyncio.sleep_ms(20)  # Give other coros a look-in
