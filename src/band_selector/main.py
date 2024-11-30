@@ -582,8 +582,11 @@ async def msg_loop(q):
             if m1 == 0:
                 # detect missing radio.  do something about it.
                 radio_power = True
+                logging.info('radio power is on', 'main:msg_loop')
             else:
                 radio_power = False
+                logging.info('radio power is off','main:msg_loop')
+                await update_radio_display(f'{radio_name} No Power', None)
         elif m0 == MSG_NETWORK_UPDOWN:
             # network up/down
             if m1 == 1:  # network is up!
@@ -598,7 +601,7 @@ async def msg_loop(q):
             # await asyncio.sleep_ms(50)
             logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
         elif m0 == MSG_BAND_CHANGE:  # band change detected
-            logging.debug(f'band change, power = {radio_power}', 'main:msg_loop')
+            logging.info(f'band change, power = {radio_power}', 'main:msg_loop')
             if not radio_power:
                 await update_radio_display(f'{radio_name} No Power', None)
                 set_inhibit(1)
