@@ -5,8 +5,8 @@
 	(uuid "cdd65bb7-9932-4d13-88c8-7b1370c1bd74")
 	(paper "A")
 	(title_block
-		(title "N1KDO Display Board")
-		(date "2024-10-26")
+		(title "Band Selector Display Board")
+		(date "2024-12-01")
 		(rev "0.0.4")
 	)
 	(lib_symbols
