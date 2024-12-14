@@ -1,0 +1,26 @@
+{
+  "source_directory" : "../band_selector/",
+  "files": [
+    "content/",
+    "data/",
+    "alcd.py",
+    "button.py",
+    "fourbits.py",
+    "gpio_pin.py",
+    "http_server.py",
+    "main.py",
+    "micro_logging.py",
+    "picow_network.py",
+    "ringbuf_queue.py",
+    "uaiohttpclient.py",
+    "utils.py",
+    "content/favicon.ico",
+    "content/files.html",
+    "content/network.html",
+    "content/setup.html",
+    "content/status.html"
+  ],
+  "special_files": [
+    "data/config.json"
+  ]
+}

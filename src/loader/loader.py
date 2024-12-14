@@ -20,10 +20,12 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.4'
+__version__ = '0.9.5'
 
 import argparse
 import hashlib
+import json
+import logging
 import os
 import sys
 
@@ -31,30 +33,6 @@ import serial
 from serial.tools.list_ports import comports
 from pyboard import Pyboard, PyboardError
 BAUD_RATE = 115200
-
-SRC_DIR = '../band_selector/'
-FILES_LIST = [
-    'content/',
-    'data/',
-    'alcd.py',
-    'button.py',
-    'fourbits.py',
-    'gpio_pin.py',
-    'http_server.py',
-    'main.py',
-    'micro_logging.py',
-    # do not need not_machine.py on real hardware
-    'picow_network.py',
-    'ringbuf_queue.py',
-    'uaiohttpclient.py',
-    'utils.py',
-    'content/favicon.ico',
-    'content/files.html',
-    'content/network.html',
-    'content/setup.html',
-    'content/status.html',
-]
-SPECIAL_FILES = ['data/config.json']
 
 
 def get_ports_list():
@@ -70,11 +48,11 @@ def put_file_progress_callback(bytes_so_far, bytes_total):
     print('.', end='')
 
 
-def put_file(filename, target, src_file_name=None):
+def put_file(filename, target, source_directory='.', src_file_name=None):
     if src_file_name is None:
-        src_file_name = SRC_DIR + filename
+        src_file_name = source_directory + filename
     else:
-        src_file_name = SRC_DIR + src_file_name
+        src_file_name = source_directory + src_file_name
 
     if filename[-1:] == '/':
         filename = filename[:-1]
@@ -161,7 +139,16 @@ def local_sha1(file):
     return bytes.hex(hasher.digest())
 
 
-def load_device(port, force):
+def load_device(port, force, manifest_filename='loader_manifest.json'):
+    try:
+        with open(manifest_filename, 'r') as manifest_file:
+            manifest = json.load(manifest_file)
+            files_list = manifest.get('files', [])
+            special_files_list = manifest.get('special_files', [])
+            source_directory = manifest.get('source_directory', '.')
+    except FileNotFoundError:
+        logging.error(f'cannot open manifest file {manifest_filename}.')
+        raise
     try:
         target = Pyboard(port, BAUD_RATE)
     except PyboardError:
@@ -172,8 +159,18 @@ def load_device(port, force):
     # clean up files that do not belong here.
     existing_files = loader_ls(target)
     for existing_file in existing_files:
-        if (force or existing_file not in FILES_LIST) and existing_file not in SPECIAL_FILES:
-            if existing_file[:-1] == '/':
+        if existing_file in special_files_list:
+            continue  # do not delete any special file
+        safe_to_delete = True
+        if existing_file[-1] == '/':
+            for special_file in special_files_list:
+                if existing_file in special_file:
+                    safe_to_delete = False
+                    break
+        if not safe_to_delete:
+            continue #  do not (try to) delete any directory containing special files
+        if force or existing_file not in files_list:
+            if existing_file[-1] == '/':
                 print(f'removing directory {existing_file[:-1]}')
                 target.fs_rm(existing_file[:-1])
             else:
@@ -182,25 +179,25 @@ def load_device(port, force):
 
     # now add the files that do belong here.
     existing_files = loader_ls(target)
-    for file in FILES_LIST:
+    for file in files_list:
         if not file.endswith('/'):
             # if this is not a directory, get the sha1 hash of the pico-w file
             # and compare it with the sha1 hash of the local file.
             # do not send unchanged files.  This makes subsequent loader invocations much faster.
             if file in existing_files:
                 picow_hash = loader_sha1(target, file)
-                local_hash = local_sha1(SRC_DIR + file)
+                local_hash = local_sha1(source_directory + file)
                 if picow_hash == local_hash:
                     continue
-            put_file(file, target)
+            put_file(file, target, source_directory=source_directory)
         else:
-            put_file(file, target)
+            put_file(file, target, source_directory=source_directory)
 
     # this is logic that will not overwrite any of the SPECIAL FILES if present,
     # if it is not present, it will use the contents of $file.example
-    for file in SPECIAL_FILES:
+    for file in special_files_list:
         if file not in existing_files:
-            put_file(file, target, src_file_name=f'{file}.example')
+            put_file(file, target, source_directory=source_directory, src_file_name=f'{file}.example')
     target.exit_raw_repl()
     target.close()
 
@@ -221,8 +218,12 @@ def load_device(port, force):
                 b = pyboard_port.read(1)
                 sys.stdout.write(b.decode())
             except serial.SerialException:
-                print(f'\n\nLost connection to device on {port}.')
+                print(f'\n\nLost connection to device on {port}, exiting.')
                 break
+            except KeyboardInterrupt:
+                print('got keyboard interrupt, exiting.')
+                break
+
 
 
 def main():
@@ -234,11 +235,13 @@ def main():
                         help='force all files to be replaced')
     parser.add_argument('--port',
                         help='name of serial port, otherwise it will be detected.')
+
+    parser.add_argument('--manifest-filename',
+                        help='name of manifest file',
+                        default='loader_manifest.json')
     args = parser.parse_args()
     if 'force' in args:
         force = args.force
-    else:
-        force = False
     if 'port' in args and args.port is not None:
         picow_port = args.port
     else:
@@ -262,7 +265,7 @@ def main():
         sys.exit(1)
 
     print(f'\nAttempting to load device on port {picow_port}')
-    load_device(picow_port, force)
+    load_device(picow_port, force, manifest_filename=args.manifest_filename)
 
 
 if __name__ == "__main__":
