@@ -25,17 +25,25 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 __version__ = '0.0.5'
 
-from utils import get_timestamp
+from utils import get_timestamp, upython
 
-DEBUG = 5
-INFO = 4
-WARNING = 3
-ERROR = 2
-CRITICAL = 1
-NOTHING = 0
+if not upython:
+    def const(i):
+        return i
+
+DEBUG = const(5)
+INFO = const(4)
+WARNING = const(3)
+ERROR = const(2)
+CRITICAL = const(1)
+NOTHING = const(0)
 
 loglevel = ERROR
 
+# this is used to determine if logging.level() methods should be called,
+# purpose is to reduce heap pollution from building complex log messages.
+def should_log(level):
+    return level >= loglevel
 
 def _log(level: str, message: str, caller=None):
     level = '[' + level + ']'

@@ -39,7 +39,9 @@ from http_server import (HttpServer,
                          api_rename_file_callback,
                          api_remove_file_callback,
                          api_upload_file_callback,
-                         api_get_files_callback)
+                         api_get_files_callback,
+                         HTTP_STATUS_OK,
+                         HTTP_STATUS_BAD_REQUEST)
 from ringbuf_queue import RingbufQueue
 from utils import milliseconds, upython, safe_int, num_bits_set
 import micro_logging as logging
@@ -54,6 +56,9 @@ else:
     import asyncio
     from not_machine import machine
     from asyncio import sleep
+
+    def const(i):  # support micropython const() in cpython
+        return i
 
 import uaiohttpclient as aiohttp
 
@@ -155,6 +160,7 @@ antenna_names = []
 antenna_bands = []
 band_antennae = []  # list of antennas that could work on the current band.
 radio_power = False
+switch_connected = False
 
 # well-loved status messages
 radio_status = ['', '']
@@ -201,9 +207,9 @@ def read_config():
     return config
 
 
-def save_config(config):
+def save_config(config_data):
     with open(CONFIG_FILE, 'w') as config_file:
-        json.dump(config, config_file)
+        json.dump(config_data, config_file)
 
 
 def default_config():
@@ -233,7 +239,8 @@ async def api_response(resp, msg, msgq):
     """
     payload = await resp.read()
     await resp.aclose()
-    logging.debug(f'api call returned {payload}', 'main:api_response')
+    if logging.should_log(logging.DEBUG):
+        logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
     new_msg = (msg[0], data)
     await msgq.put(new_msg)
@@ -244,17 +251,23 @@ async def call_api(config, endpoint, msg, msgq):
     t0 = milliseconds()
     url = f'http://{config.get('switch_ip', 'localhost')}{endpoint}'
     logging.info(f'calling api {url} at {milliseconds()}', 'main:call_api')
-    resp = await aiohttp.request("GET", url)
-    http_status = resp.status
-    t1 = milliseconds()
-    logging.info(f'api call to {endpoint} took {t1 - t0} ms', 'main:call_api')
-    msg = (msg[0], (http_status, 'no response'))
-    asyncio.create_task(api_response(resp, msg, msgq))
+    try:
+        resp = await aiohttp.request("GET", url)
+        http_status = resp.status
+        t1 = milliseconds()
+        logging.info(f'api call to {endpoint} took {t1 - t0} ms', 'main:call_api')
+        msg = (msg[0], (http_status, 'no response'))
+        asyncio.create_task(api_response(resp, msg, msgq))
+    except Exception as ex:
+        logging.exception(f'failed to execute api call to {url}', 'main:call_api', ex)
+        msg = (msg[0], (0, str(ex)))
+        await msgq.put(msg)
 
 
 async def call_select_antenna_api(config, new_antenna, msg, msgq):
     radio_number = config.get('radio_number')
-    logging.debug(f'attempting to select antenna {new_antenna}', 'main:call_select_antenna_api')
+    if logging.should_log(logging.DEBUG):
+        logging.debug(f'attempting to select antenna {new_antenna}', 'main:call_select_antenna_api')
     endpoint = f'/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
     await call_api(config, endpoint, msg, msgq)
 
@@ -273,7 +286,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         payload = read_config()
         # payload.pop('secret')  # do not return the secret
         response = json.dumps(payload).encode('utf-8')
-        http_status = 200
+        http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == 'POST':
         config = read_config()
@@ -355,16 +368,16 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             if dirty:
                 save_config(config)
             response = b'ok\r\n'
-            http_status = 200
+            http_status = HTTP_STATUS_OK
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
         else:
             response = b'parameter out of range\r\n'
             logging.error(f'problems {problems}', 'main:api_config_callback')
-            http_status = 400
+            http_status = HTTP_STATUS_BAD_REQUEST
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         response = b'GET or PUT only.'
-        http_status = 400
+        http_status = HTTP_STATUS_BAD_REQUEST
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
@@ -375,10 +388,10 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
     if upython:
         keep_running = False
         response = b'ok\r\n'
-        http_status = 200
+        http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
-        http_status = 400
+        http_status = HTTP_STATUS_BAD_REQUEST
         response = b'not permitted except on PICO-W'
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
@@ -387,7 +400,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/kpa_status'
     payload = {'lcd_lines': [lcd[0], lcd[1]]}
     response = json.dumps(payload).encode('utf-8')
-    http_status = 200
+    http_status = HTTP_STATUS_OK
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
@@ -395,7 +408,7 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
     response = b'ok'
-    http_status = 200
+    http_status = HTTP_STATUS_OK
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
@@ -438,7 +451,7 @@ async def new_band(new_band_number):
     else:
         await update_radio_display(None, '')
         current_antenna_list_index = 0
-        await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (202, (0, '')), msgq)
+        await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
 
 
 async def change_band_antenna(up=True):
@@ -453,7 +466,7 @@ async def change_band_antenna(up=True):
         current_antenna_list_index -= 1
         if current_antenna_list_index < 0:
             current_antenna_list_index = len(band_antennae) -1
-    await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (202, (0, '')), msgq)
+    await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
 
 
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
@@ -505,7 +518,7 @@ async def show_edit_display(menu_number, item_number):
 async def msg_loop(q):
     global current_antenna, current_antenna_name, current_band_number, radio_name, \
         antenna_names, antenna_bands, band_antennae, radio_power, current_antenna_list_index, \
-        menu_state
+        menu_state, switch_connected
 
     menu_number = 0
     item_number = 0
@@ -513,7 +526,8 @@ async def msg_loop(q):
     while True:
         msg = await q.get()
         t0 = milliseconds()
-        logging.debug(f'msg received: {msg}', 'main:msg_loop')
+        if logging.should_log(logging.DEBUG):
+            logging.debug(f'msg received: {msg}', 'main:msg_loop')
         m0 = msg[0]
         m1 = msg[1]
         if m0 == 0:
@@ -591,7 +605,7 @@ async def msg_loop(q):
             # network up/down
             if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
-                await call_api(config, '/api/status', (201, None), msgq)
+                await call_api(config, '/api/status', (MSG_STATUS_RESPONSE, None), msgq)
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             # await asyncio.sleep_ms(50)
@@ -618,29 +632,39 @@ async def msg_loop(q):
                     set_inhibit(1)
         elif m0 == MSG_STATUS_RESPONSE:  # http status response
             http_status = m1[0]
-            try:
-                switch_data = json.loads(m1[1])
-            except json.decoder.JSONDecodeError as jde:
-                logging.exception('cannot decode json', 'main:msg_loop', jde)
-                switch_data = {}
-            antenna_names = switch_data.get('antenna_names', ['', '', '', '', '', '', '', ''])
-            antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
-            radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
-            radio_number = int(config.get('radio_number', -1))
-            radio_name = radio_names[radio_number - 1]
-            current_antenna = -1
-            if radio_number == 1:
-                current_antenna = switch_data.get('radio_1_antenna', -1)
-            elif radio_number == 2:
-                current_antenna = switch_data.get('radio_2_antenna', -1)
-            if 1 <= current_antenna <= 8:
-                current_antenna_name = antenna_names[current_antenna - 1]
+            if http_status == HTTP_STATUS_OK:
+                try:
+                    switch_data = json.loads(m1[1])
+                    switch_connected = True
+                except json.decoder.JSONDecodeError as jde:
+                    switch_connected = False
+                    logging.exception('cannot decode json', 'main:msg_loop', jde)
+                    switch_data = {}
+                antenna_names = switch_data.get('antenna_names', ['', '', '', '', '', '', '', ''])
+                antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
+                radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
+                radio_number = int(config.get('radio_number', -1))
+                radio_name = radio_names[radio_number - 1]
+                current_antenna = -1
+                if radio_number == 1:
+                    current_antenna = switch_data.get('radio_1_antenna', -1)
+                elif radio_number == 2:
+                    current_antenna = switch_data.get('radio_2_antenna', -1)
+                if current_antenna == 0:
+                    current_antenna_name = "Antenna DISCONNECTED"
+                elif 1 <= current_antenna <= 8:
+                    current_antenna_name = antenna_names[current_antenna - 1]
+                else:
+                    current_antenna_name = f'unknown antenna {current_antenna}'
             else:
-                current_antenna_name = f'unknown antenna {current_antenna}'
+                logging.error(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
+                switch_connected = False
+                current_antenna = -1
+                current_antenna_name = 'no antenna switch!'
             await update_radio_display(None, current_antenna_name)
 
             if not radio_power:
-                msg = f'{radio_name} no radio'
+                msg = f'{radio_name} no power'
                 logging.warning(msg)
                 await update_radio_display(msg, None)
                 set_inhibit(1)
@@ -650,7 +674,7 @@ async def msg_loop(q):
                     band_detector.invalidate()
                 msg = f'{radio_name} {BANDS[current_band_number]}'
                 await update_radio_display(msg, None)
-                if current_antenna == -1:
+                if current_antenna < 1:
                     set_inhibit(1)
                 else:
                     if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
@@ -663,9 +687,9 @@ async def msg_loop(q):
         elif m0 == MSG_ANTENNA_RESPONSE:  # http select antenna response
             http_status = m1[0]
             payload = m1[1].decode().strip()
-            if http_status == 200:
-                await call_api(config, '/api/status', (201, None), msgq)
-            elif 400 <= http_status <= 499:
+            if http_status == HTTP_STATUS_OK:
+                await call_api(config, '/api/status', (MSG_STATUS_RESPONSE, None), msgq)
+            elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0:
                     logging.warning(f'no antenna available for band ')
                     await update_radio_display(None, f'*{payload}')
@@ -673,17 +697,21 @@ async def msg_loop(q):
                 else:
                     # if there is another antenna candidate, try to get it
                     await update_radio_display(None, '')
-                    await call_select_antenna_api(config, band_antennae.pop(0) + 1, (202, (0, '')), msgq)
+                    # TODO fix this pop, use the indexed value instead
+                    await call_select_antenna_api(config, band_antennae.pop(0) + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+            else:  # some other HTTP/status code...
+                logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
         else:
-            logging.warning(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
+            logging.error(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
         t1 = milliseconds()
-        if logging.loglevel == logging.DEBUG:
+        if logging.should_log(logging.DEBUG):
             logging.debug(f'   Message {m0} handling took {t1 - t0} ms.', 'main:msg_loop')
 
 
 async def net_msg_func(message: str, msg_status=0) -> None:
     global network_status
-    logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
+    if logging.should_log(logging.DEBUG):
+        logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     lines = message.split('\n')
     if len(lines) == 1:
         await update_network_display(message)
@@ -745,7 +773,7 @@ async def main():
 
 
 if __name__ == '__main__':
-    logging.loglevel = logging.DEBUG  # TODO FIXME
+    # logging.loglevel = logging.DEBUG  # TODO FIXME
     logging.loglevel = logging.INFO
     logging.info('starting', 'main:__main__')
     try:
