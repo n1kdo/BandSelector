@@ -750,24 +750,8 @@ async def main():
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     web_server = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
 
-    reset_button_pressed_count = 0
     while keep_running:
-        if upython:
-            await asyncio.sleep(0.25)
-            pressed = False  # TODO FIXME cannot reset right now  reset_button.value() == 0
-            if pressed:
-                reset_button_pressed_count += 1
-            else:
-                if reset_button_pressed_count > 0:
-                    reset_button_pressed_count -= 1
-            if reset_button_pressed_count > 7:
-                logging.info('reset button pressed', 'main:main')
-                ap_mode = not ap_mode
-                config['ap_mode'] = ap_mode
-                save_config(config)
-                keep_running = False
-        else:
-            await asyncio.sleep(10.0)
+        await asyncio.sleep(1.0)
     if upython:
         machine.soft_reset()
 
