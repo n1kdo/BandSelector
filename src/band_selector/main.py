@@ -283,9 +283,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     global config
     if verb == 'GET':
-        payload = read_config()
-        # payload.pop('secret')  # do not return the secret
-        response = json.dumps(payload).encode('utf-8')
+        response = read_config()
         http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == 'POST':
@@ -398,8 +396,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/kpa_status'
-    payload = {'lcd_lines': [lcd[0], lcd[1]]}
-    response = json.dumps(payload).encode('utf-8')
+    response = {'lcd_lines': [lcd[0], lcd[1]]}
     http_status = HTTP_STATUS_OK
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status

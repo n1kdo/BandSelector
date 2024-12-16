@@ -99,6 +99,7 @@ class HttpServer:
         self.content_dir = content_dir
         self.uri_map = {}
         self.buffer = bytearray(self.BUFFER_SIZE)
+        self.bmv = memoryview(self.buffer)
 
     def add_uri_callback(self, uri, callback):
         self.uri_map[uri] = callback
@@ -119,7 +120,7 @@ class HttpServer:
         if content_type is None:
             content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get('*')
         http_status = HTTP_STATUS_OK
-        self.start_response(writer, HTTP_STATUS_OK, content_type, content_length)
+        self._start_response(writer, HTTP_STATUS_OK, content_type, content_length)
         try:
             with open(filename, 'rb', self.BUFFER_SIZE) as infile:
                 while True:
@@ -127,14 +128,14 @@ class HttpServer:
                     if bytes_read == self.BUFFER_SIZE:
                         writer.write(self.buffer)
                     else:
-                        writer.write(self.buffer[0:bytes_read])
+                        writer.write(self.bmv[0:bytes_read])
                     if bytes_read < self.BUFFER_SIZE:
                         break
         except Exception as exc:
             logging.error('{type(exc)} {exc}', 'http_server:serve_content')
         return content_length, http_status
 
-    def start_response(self, writer, http_status=HTTP_STATUS_OK, content_type=None, response_size=0, extra_headers=None):
+    def _start_response(self, writer, http_status=HTTP_STATUS_OK, content_type=None, response_size=0, extra_headers=None):
         status_text = self.HTTP_STATUS_TEXT.get(http_status) or 'Confused'
         protocol = 'HTTP/1.0'
         writer.write(f'{protocol} {http_status} {status_text}\r\n'.encode('utf-8'))
@@ -149,14 +150,26 @@ class HttpServer:
         writer.write(b'\r\n')
 
     def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=None, response=None, extra_headers=None):
-        content_length = len(response) if response else 0
-        self.start_response(writer, http_status, content_type, content_length, extra_headers)
-        if response is not None and len(response) > 0:
-            writer.write(response)
+        content_length = 0
+        typ = type(response)
+        if typ == bytes:
+            content_length = len(response)
+            self._start_response(writer, http_status, content_type, content_length, extra_headers)
+            if response is not None and len(response) > 0:
+                writer.write(response)
+        elif typ in [dict, list]:
+            content_length = dumpb(response, self.buffer, 0)
+            content_type = 'application/json'
+            self._start_response(writer, http_status, content_type, content_length, extra_headers)
+            if content_length > 0:
+                writer.write(self.bmv[:content_length])
+                writer.drain()
+        else:
+            logging.error(f'trying to serialize {typ} response.')
         return content_length
 
     @classmethod
-    def unpack_args(cls, value):
+    def _unpack_args(cls, value):
         args_dict = {}
         if value is not None:
             args_list = value.split('&')
@@ -226,12 +239,12 @@ class HttpServer:
 
                 args = {}
                 if verb == 'GET':
-                    args = self.unpack_args(query_args)
+                    args = self._unpack_args(query_args)
                 elif verb == 'POST':
                     if request_content_length > 0:
                         if request_content_type == self.CT_APP_WWW_FORM:
                             data = await reader.read(request_content_length)
-                            args = self.unpack_args(data.decode())
+                            args = self._unpack_args(data.decode())
                         elif request_content_type == self.CT_APP_JSON:
                             data = await reader.read(request_content_length)
                             args = json.loads(data.decode())
@@ -295,14 +308,13 @@ def file_size(filename):
 # noinspection PyUnusedLocal
 async def api_get_files_callback(http, verb, args, reader, writer, request_headers=None):
     if verb == 'GET':
-        payload = os.listdir(http.content_dir)
-        response = json.dumps(payload).encode('utf-8')
+        response = os.listdir(http.content_dir)
         http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     else:
         http_status = HTTP_STATUS_BAD_REQUEST
         response = b'only GET permitted'
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -463,3 +475,114 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
         response = b'bad file name'
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
+
+
+# buffered json converter
+
+"""
+lcurly = 0x7b
+rcurly = 0x7c
+lsquare = 0x5b
+rsquare = 0x5d
+quote = 0x22
+colon = 0x3a
+comma = 0x2c
+space = 0x20
+"""
+
+def serialize_obj(thing, buffer):
+    len = dumpb(thing, buffer, 0)
+    return buffer[:len]
+
+
+def dumpb(thing, buffer, offset=0):
+    """
+    this is a json serializer that write to a bytes buffer in order to avoid heap bloat.
+    :param thing: the thing to serialize
+    :param buffer: the buffer to serialize into.
+    :param offset: this is the offset of the next byte to add to the buffer.
+    :return: the new buffer length
+    """
+    typ = type(thing)
+    if typ == bool:
+        if thing:
+            buffer[offset] = 0x74  # 't'
+            offset += 1
+            buffer[offset] = 0x72  # 'r'
+            offset += 1
+            buffer[offset] = 0x75  # 'u'
+            offset += 1
+            buffer[offset] = 0x65  # 'e'
+            offset += 1
+        else:
+            buffer[offset] = 0x66  #  'f'
+            offset += 1
+            buffer[offset] = 0x61  # 'a'
+            offset += 1
+            buffer[offset] = 0x6c  # 'l'
+            offset += 1
+            buffer[offset] = 0x73  # 's'
+            offset += 1
+            buffer[offset] = 0x65  # 'e'
+            offset += 1
+    elif typ == str:  # strings get quoted
+        buffer[offset] = 0x22  # add "
+        offset += 1
+        for c in thing:
+            buffer[offset] = ord(c)  # magic and suspicious conversion to ascii
+            offset += 1
+        buffer[offset] = 0x22  # add "
+        offset += 1
+    elif typ in [int, float]:
+        for c in str(thing):
+            buffer[offset] = ord(c)
+            offset += 1
+    elif typ == list:
+        offset = _dumpb_list(thing, buffer, offset)
+    elif typ == dict:
+        offset = _dumpb_dict(thing, buffer, offset)
+    else:
+        print(f'dumpb: unhanded type: {typ}')
+    return offset
+
+
+def _dumpb_list(l, buffer, offset):
+    buffer[offset] = 0x5b # add [
+    offset += 1
+    first = True
+    for i in l:
+        if first:
+            first = False
+        else:
+            buffer[offset] = 0x2c  # comma
+            offset += 1
+            buffer[offset] = 0x20  # SPACE
+            offset += 1
+        offset = dumpb(i, buffer, offset)
+    buffer[offset] = 0x5d # add ]
+    offset += 1
+    return offset
+
+
+def _dumpb_dict(d, buffer, offset):
+    buffer[offset] = 0x7b # add {
+    offset += 1
+    first = True
+    for k, v in d.items():
+        if first:
+            first = False
+        else:
+            buffer[offset] = 0x2c  # comma
+            offset += 1
+            buffer[offset] = 0x20  # SPACE
+            offset += 1
+        # first add key.  assumption is that it is str. other types will not give useful json.
+        offset = dumpb(k, buffer, offset)
+        buffer[offset] = 0x3a  # : colon
+        offset += 1
+        buffer[offset] = 0x20  # SPACE
+        offset += 1
+        offset = dumpb(v, buffer, offset)
+    buffer[offset] = 0x7d # add }
+    offset += 1
+    return offset
