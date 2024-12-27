@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024 J. B. Otterson N1KDO.'
-__version__ = '0.0.2'
+__version__ = '0.0.3'
 
 #
 # Copyright 2022, 2024 J. B. Otterson N1KDO.
@@ -50,12 +50,12 @@ if upython:
     import machine
     import network
     import uasyncio as asyncio
-    from uasyncio import sleep
+    from uasyncio import sleep, TimeoutError
     from picow_network import PicowNetwork
 else:
     import asyncio
     from not_machine import machine
-    from asyncio import sleep
+    from asyncio import sleep, TimeoutError
 
     def const(i):  # support micropython const() in cpython
         return i
@@ -89,18 +89,18 @@ ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
                      ]
 
 # message IDs
-MSG_BTN_1 = 1
-MSG_BTN_2 = 2
-MSG_BTN_3 = 3
-MSG_BTN_4 = 4
-MSG_POWER_SENSE = 10
-MSG_NETWORK_CHANGE = 20
-MSG_NETWORK_UPDOWN = 50
-MSG_LCD_LINE0 = 90
-MSG_LCD_LINE1 = 91
-MSG_BAND_CHANGE = 100
-MSG_STATUS_RESPONSE = 201
-MSG_ANTENNA_RESPONSE = 202
+MSG_BTN_1 = const(1)
+MSG_BTN_2 = const(2)
+MSG_BTN_3 = const(3)
+MSG_BTN_4 = const(4)
+MSG_POWER_SENSE = const(10)
+MSG_NETWORK_CHANGE = const(20)
+MSG_NETWORK_UPDOWN = const(50)
+MSG_LCD_LINE0 = const(90)
+MSG_LCD_LINE1 = const(91)
+MSG_BAND_CHANGE = const(100)
+MSG_STATUS_RESPONSE = const(201)
+MSG_ANTENNA_RESPONSE = const(202)
 
 # set up message queue
 msgq = RingbufQueue(32)
@@ -246,30 +246,37 @@ async def api_response(resp, msg, msgq):
     await msgq.put(new_msg)
 
 
-async def call_api(config, endpoint, msg, msgq):
-    # TODO this is too slow. but it does work.
-    t0 = milliseconds()
-    url = f'http://{config.get('switch_ip', 'localhost')}{endpoint}'
-    logging.info(f'calling api {url} at {milliseconds()}', 'main:call_api')
+async def call_api(url, msg, msgq):
+    # TODO this is too slow. but it does work. ~300 ms
+    if logging.should_log(logging.DEBUG):
+        logging.debug(f'calling api {url}', 'main:call_api')
+        t0 = milliseconds()
     try:
-        resp = await aiohttp.request("GET", url)
+        resp = await asyncio.wait_for(aiohttp.request("GET", url),1)
         http_status = resp.status
-        t1 = milliseconds()
-        logging.info(f'api call to {endpoint} took {t1 - t0} ms', 'main:call_api')
+        if logging.should_log(logging.DEBUG):
+            dt = milliseconds() - t0
+            logging.debug(f'api call to {url} took {dt} ms', 'main:call_api')
         msg = (msg[0], (http_status, 'no response'))
         asyncio.create_task(api_response(resp, msg, msgq))
+    except TimeoutError as ex:
+        errmsg = f'timed out on api call to {url}'
+        logging.warning(errmsg, 'main:call_api')
+        msg = (msg[0], (0, errmsg))
+        await msgq.put(msg)
     except Exception as ex:
-        logging.exception(f'failed to execute api call to {url}', 'main:call_api', ex)
-        msg = (msg[0], (0, str(ex)))
+        errmsg = f'failed to execute api call to {url}'
+        logging.exception(errmsg, 'main:call_api', ex)
+        msg = (msg[0], (0, errmsg))
         await msgq.put(msg)
 
 
-async def call_select_antenna_api(config, new_antenna, msg, msgq):
+async def call_select_antenna_api(switch_host, new_antenna, msg, msgq):
     radio_number = config.get('radio_number')
     if logging.should_log(logging.DEBUG):
         logging.debug(f'attempting to select antenna {new_antenna}', 'main:call_select_antenna_api')
-    endpoint = f'/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
-    await call_api(config, endpoint, msg, msgq)
+    url = f'http://{switch_host}/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
+    await call_api(url, msg, msgq)
 
 
 # noinspection PyUnusedLocal
@@ -451,7 +458,8 @@ async def new_band(new_band_number):
     else:
         await update_radio_display(None, '')
         current_antenna_list_index = 0
-        await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+        switch_host = config.get('switch_ip', 'localhost')
+        await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
 
 
 async def change_band_antenna(up=True):
@@ -466,7 +474,8 @@ async def change_band_antenna(up=True):
         current_antenna_list_index -= 1
         if current_antenna_list_index < 0:
             current_antenna_list_index = len(band_antennae) -1
-    await call_select_antenna_api(config, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+    switch_host = config.get('switch_ip', 'localhost')
+    await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
 
 
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
@@ -519,6 +528,9 @@ async def msg_loop(q):
     global current_antenna, current_antenna_name, current_band_number, radio_name, \
         antenna_names, antenna_bands, band_antennae, radio_power, current_antenna_list_index, \
         menu_state, switch_connected
+
+    switch_host = config.get('switch_ip', 'localhost')
+    status_url = f'http://{switch_host}/api/status'
 
     menu_number = 0
     item_number = 0
@@ -605,7 +617,7 @@ async def msg_loop(q):
             # network up/down
             if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
-                await call_api(config, '/api/status', (MSG_STATUS_RESPONSE, None), msgq)
+                await call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq)
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             # await asyncio.sleep_ms(50)
@@ -665,7 +677,7 @@ async def msg_loop(q):
 
             if not radio_power:
                 msg = f'{radio_name} no power'
-                logging.warning(msg)
+                logging.info(msg)
                 await update_radio_display(msg, None)
                 set_inhibit(1)
             else:
@@ -688,7 +700,7 @@ async def msg_loop(q):
             http_status = m1[0]
             payload = m1[1].decode().strip()
             if http_status == HTTP_STATUS_OK:
-                await call_api(config, '/api/status', (MSG_STATUS_RESPONSE, None), msgq)
+                await call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq)
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0:
                     logging.warning(f'no antenna available for band ')
@@ -698,14 +710,16 @@ async def msg_loop(q):
                     # if there is another antenna candidate, try to get it
                     await update_radio_display(None, '')
                     # TODO fix this pop, use the indexed value instead
-                    await call_select_antenna_api(config, band_antennae.pop(0) + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+                    await call_select_antenna_api(switch_host, band_antennae.pop(0) + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
         else:
             logging.error(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
-        t1 = milliseconds()
-        if logging.should_log(logging.DEBUG):
-            logging.debug(f'   Message {m0} handling took {t1 - t0} ms.', 'main:msg_loop')
+        dt = milliseconds() - t0
+        if dt > 100:
+            logging.warning(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
+        elif logging.should_log(logging.DEBUG):
+            logging.debug(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
 
 
 async def net_msg_func(message: str, msg_status=0) -> None:

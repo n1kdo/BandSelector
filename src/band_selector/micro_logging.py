@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.5'
+__version__ = '0.0.6'
 
 from utils import get_timestamp, upython
 
@@ -43,7 +43,7 @@ loglevel = ERROR
 # this is used to determine if logging.level() methods should be called,
 # purpose is to reduce heap pollution from building complex log messages.
 def should_log(level):
-    return level >= loglevel
+    return level <= loglevel
 
 def _log(level: str, message: str, caller=None):
     level = '[' + level + ']'
