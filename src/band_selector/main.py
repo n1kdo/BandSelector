@@ -276,7 +276,7 @@ async def call_select_antenna_api(switch_host, new_antenna, msg, msgq):
     if logging.should_log(logging.DEBUG):
         logging.debug(f'attempting to select antenna {new_antenna}', 'main:call_select_antenna_api')
     url = f'http://{switch_host}/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
-    await call_api(url, msg, msgq)
+    asyncio.create_task(call_api(url, msg, msgq))
 
 
 # noinspection PyUnusedLocal
@@ -617,7 +617,7 @@ async def msg_loop(q):
             # network up/down
             if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
-                await call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq)
+                asyncio.create_task(call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq))
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             # await asyncio.sleep_ms(50)
@@ -677,7 +677,7 @@ async def msg_loop(q):
 
             if not radio_power:
                 msg = f'{radio_name} no power'
-                logging.info(msg)
+                logging.info(msg, 'main:msg_loop')
                 await update_radio_display(msg, None)
                 set_inhibit(1)
             else:
@@ -700,7 +700,7 @@ async def msg_loop(q):
             http_status = m1[0]
             payload = m1[1].decode().strip()
             if http_status == HTTP_STATUS_OK:
-                await call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq)
+                asyncio.create_task(call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq))
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0:
                     logging.warning(f'no antenna available for band ')
