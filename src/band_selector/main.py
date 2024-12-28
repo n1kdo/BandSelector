@@ -46,7 +46,6 @@ from ringbuf_queue import RingbufQueue
 from utils import milliseconds, upython, safe_int, num_bits_set
 import micro_logging as logging
 import asyncio
-#from asyncio import sleep, TimeoutError
 
 if upython:
     import machine
@@ -634,6 +633,8 @@ async def msg_loop(q):
                     current_band_number = ELECRAFT_BAND_MAP[m1]
                     if len(antenna_names) > 0:  # only change bands if there are antennas.
                         await new_band(current_band_number)
+                    else:   # update the display with the band name
+                        await update_radio_display(f'{radio_name} {BANDS[current_band_number]}', None)
                 else:
                     msg = f'unknown band # {m1}'
                     logging.warning(msg)

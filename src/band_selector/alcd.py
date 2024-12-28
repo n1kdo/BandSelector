@@ -15,9 +15,12 @@
 # Author : Matt Hawkins
 # Site   : http://www.raspberrypi-spy.co.uk
 
-from machine import Pin
-import utime as time
+import time
 import asyncio
+
+# noinspection PyUnresolvedReferences
+from machine import Pin
+
 
 # ********************************** GLOBAL CONSTANTS: TARGET BOARD PIN NUMBERS *************************************
 
