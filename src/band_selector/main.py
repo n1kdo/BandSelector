@@ -165,10 +165,10 @@ radio_status = ['', '']
 network_status = ['', '']
 
 # menu state machine data
-RADIO_STATUS_STATE = 0
-NETWORK_STATUS_STATE = 1
-MENU_MODE_STATE = 2
-MENU_EDIT_STATE = 3
+RADIO_STATUS_STATE = const(0)
+NETWORK_STATUS_STATE = const(1)
+MENU_MODE_STATE = const(2)
+MENU_EDIT_STATE = const(3)
 MENUS = [
     ('Network Mode', ['Station', 'Access Point']),
     ('Restart?', ['No', 'Yes']),
@@ -236,7 +236,7 @@ async def api_response(resp, msg, msgq):
     :return: None
     """
     payload = await resp.read()
-    await resp.aclose()
+    # await resp.aclose()
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
@@ -245,7 +245,6 @@ async def api_response(resp, msg, msgq):
 
 
 async def call_api(url, msg, msgq):
-    # TODO this is too slow. but it does work. ~300 ms
     if logging.should_log(logging.DEBUG):
         logging.debug(f'calling api {url}', 'main:call_api')
         t0 = milliseconds()
@@ -707,8 +706,7 @@ async def msg_loop(q):
                 else:
                     # if there is another antenna candidate, try to get it
                     await update_radio_display(None, '')
-                    # TODO fix this pop, use the indexed value instead
-                    await call_select_antenna_api(switch_host, band_antennae.pop(0) + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+                    await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
         else:
@@ -742,7 +740,6 @@ async def main():
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
-    ap_mode = config.get('ap_mode', False)
 
     if upython:
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
