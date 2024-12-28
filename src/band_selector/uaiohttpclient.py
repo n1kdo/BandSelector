@@ -2,7 +2,7 @@
 # taken from https://github.com/pfalcon/pycopy-lib/blob/master/uaiohttpclient/uaiohttpclient.py
 
 
-import uasyncio as asyncio
+import asyncio
 
 
 class ClientResponse:

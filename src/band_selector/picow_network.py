@@ -38,12 +38,11 @@ if upython:
     # noinspection PyUnresolvedReferences,PyPackageRequirements
     import network
     # noinspection PyUnresolvedReferences
-    import uasyncio as asyncio
     import micro_logging as logging
 else:
-    import asyncio
     import logging
 
+import asyncio
 import socket
 
 

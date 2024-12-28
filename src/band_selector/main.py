@@ -45,17 +45,15 @@ from http_server import (HttpServer,
 from ringbuf_queue import RingbufQueue
 from utils import milliseconds, upython, safe_int, num_bits_set
 import micro_logging as logging
+import asyncio
+#from asyncio import sleep, TimeoutError
 
 if upython:
     import machine
     import network
-    import uasyncio as asyncio
-    from uasyncio import sleep, TimeoutError
     from picow_network import PicowNetwork
 else:
-    import asyncio
     from not_machine import machine
-    from asyncio import sleep, TimeoutError
 
     def const(i):  # support micropython const() in cpython
         return i
@@ -259,7 +257,7 @@ async def call_api(url, msg, msgq):
             logging.debug(f'api call to {url} took {dt} ms', 'main:call_api')
         msg = (msg[0], (http_status, 'no response'))
         asyncio.create_task(api_response(resp, msg, msgq))
-    except TimeoutError as ex:
+    except asyncio.TimeoutError as ex:
         errmsg = f'timed out on api call to {url}'
         logging.warning(errmsg, 'main:call_api')
         msg = (msg[0], (0, errmsg))
@@ -440,7 +438,7 @@ def set_inhibit(inhibit):
 
 async def power_on():
     poweron_pin.on()
-    await sleep(0.100)
+    await asyncio.sleep(0.100)
     poweron_pin.off()
 
 
