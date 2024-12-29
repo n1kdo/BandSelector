@@ -2,38 +2,53 @@ import asyncio
 
 
 class ClientResponse:
-    def __init__(self, reader):
-        self.content = reader
+    def __init__(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
 
     async def read(self, sz=-1):
-        return await self.content.read(sz)
+        data = await self.reader.read(sz)
+        self.writer.close()
+        await self.writer.wait_closed()
+        self.reader.close()
+        await self.reader.wait_closed()
+        return data
 
     def __repr__(self):
         return "<ClientResponse %d %s>" % (self.status, self.headers)
 
 
 class ChunkedClientResponse(ClientResponse):
-    def __init__(self, reader):
-        self.content = reader
+    def __init__(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
         self.chunk_size = 0
 
     async def read(self, sz=4 * 1024 * 1024):
         if self.chunk_size == 0:
-            line = await self.content.readline()
+            line = await self.reader.readline()
             # print("chunk line:", l)
             line = line.split(b";", 1)[0]
             self.chunk_size = int(line, 16)
             # print("chunk size:", self.chunk_size)
             if self.chunk_size == 0:
                 # End of message
-                sep = await self.content.read(2)
+                sep = await self.reader.read(2)
                 assert sep == b"\r\n"
+                self.writer.close()
+                await self.writer.wait_closed()
+                self.reader.close()
+                await self.reader.wait_closed()
                 return b""
-        data = await self.content.read(min(sz, self.chunk_size))
+        data = await self.reader.read(min(sz, self.chunk_size))
         self.chunk_size -= len(data)
         if self.chunk_size == 0:
-            sep = await self.content.read(2)
+            sep = await self.reader.read(2)
             assert sep == b"\r\n"
+        self.writer.close()
+        await self.writer.wait_closed()
+        self.reader.close()
+        await self.reader.wait_closed()
         return data
 
     def __repr__(self):
@@ -66,13 +81,14 @@ async def request_raw(method, url):
         host,
     )
     await writer.awrite(query.encode("latin-1"))
-    return reader
+    await writer.drain()
+    return reader, writer
 
 
 async def request(method, url):
     redir_cnt = 0
     while redir_cnt < 2:
-        reader = await request_raw(method, url)
+        reader, writer = await request_raw(method, url)
         headers = []
         sline = await reader.readline()
         sline = sline.split(None, 2)
@@ -92,13 +108,14 @@ async def request(method, url):
         if 301 <= status <= 303:
             redir_cnt += 1
             await reader.aclose()
+            await writer.aclose()
             continue
         break
 
     if chunked:
-        resp = ChunkedClientResponse(reader)
+        resp = ChunkedClientResponse(reader, writer)
     else:
-        resp = ClientResponse(reader)
+        resp = ClientResponse(reader, writer)
     resp.status = status
     resp.headers = headers
     return resp

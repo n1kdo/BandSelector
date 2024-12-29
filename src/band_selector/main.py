@@ -234,8 +234,11 @@ async def api_response(resp, msg, msgq):
     :param msgq: the message queue on which to enqueue the message
     :return: None
     """
-    payload = await resp.read()
-    # await resp.aclose()
+    try:
+        payload = await resp.read()
+    except Exception as ex:
+        logging.exception('did not read payload', 'main:api_response', ex)
+        payload = ''
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
