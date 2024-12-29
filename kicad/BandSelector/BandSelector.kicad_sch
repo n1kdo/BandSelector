@@ -14438,7 +14438,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "Red LED"
+		(property "Value" "Green LED"
 			(at 218.8972 123.2408 90)
 			(effects
 				(font
@@ -15144,7 +15144,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "Green LED"
+		(property "Value" "Red LED"
 			(at 235.4072 123.2408 90)
 			(effects
 				(font
