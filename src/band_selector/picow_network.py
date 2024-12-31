@@ -316,12 +316,14 @@ class PicowNetwork:
         sleep = asyncio.sleep
         while self._keepalive:
             connected = self.is_connected()
-            logging.debug(f'self.is_connected() = {self.is_connected()}','PicowNetwork.keepalive')
+            if logging.should_log(logging.DEBUG):
+                logging.debug(f'self.is_connected() = {self.is_connected()}','PicowNetwork.keepalive')
             if not connected:
                 logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
                 await self.connect()
             else:
-                logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
             await sleep(10)  # check network every 10 seconds
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
