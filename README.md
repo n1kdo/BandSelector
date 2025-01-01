@@ -39,9 +39,10 @@ This repository contains the hardware and software for The Band Selector:
 
 ### Setup TX Inhibit
 
-If the band selector cannot grant access to an appropriate antenna for the band
-selected on the radio, it can "inhibit" transmit on the radio, which is useful 
-for protecting the transmitter from damage to do antenna mismatch.
+If the band selector cannot grant access to an appropriate antenna for the
+band selected on the radio, it can "inhibit" transmit on the radio, which
+is useful for protecting the transmitter and amplifier from damage due to 
+antenna mismatch.
 
 When the BandSelector inhibits transmit, the red LED on the lower left
 of the front panel will light.
@@ -65,5 +66,5 @@ The software is licensed under [BSD "2-Clause" license](Software-License.md),
 _except as where noted._
 
 The hardware is licensed under terms of the 
-["Creative Commons Attribution-ShareAlike 4.0 International Public License."]
-(Hardware-License.md)
+[Creative Commons Attribution-ShareAlike 4.0 
+International Public License.](Hardware-License.md)
