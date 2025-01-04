@@ -713,13 +713,16 @@ async def msg_loop(q):
             if http_status == HTTP_STATUS_OK:
                 asyncio.create_task(call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq))
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
-                if len(band_antennae) == 0:
+                if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
                     await update_radio_display(None, f'*{payload}')
                     set_inhibit(1)
                 else:
                     # if there is another antenna candidate, try to get it
+                    logging.info(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop:MSG_ANTENNA_RESPONSE')
                     await update_radio_display(None, '')
+                    if current_antenna_list_index < len(band_antennae) - 1:
+                        current_antenna_list_index = current_antenna_list_index + 1
                     await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
