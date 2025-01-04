@@ -4,10 +4,10 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024 J. B. Otterson N1KDO.'
-__version__ = '0.0.3'
+__version__ = '0.0.9'
 
 #
-# Copyright 2022, 2024 J. B. Otterson N1KDO.
+# Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
 #
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
@@ -156,6 +156,7 @@ radio_name = 'Unknown Rig'
 antenna_names = []
 antenna_bands = []
 band_antennae = []  # list of antennas that could work on the current band.
+network_connected = False
 radio_power = False
 switch_connected = False
 
@@ -272,8 +273,8 @@ async def call_api(url, msg, msgq):
 
 async def call_select_antenna_api(switch_host, new_antenna, msg, msgq):
     radio_number = config.get('radio_number')
-    if logging.should_log(logging.DEBUG):
-        logging.debug(f'attempting to select antenna {new_antenna}', 'main:call_select_antenna_api')
+    #if logging.should_log(logging.DEBUG):
+    logging.info(f'requesting antenna {new_antenna}', 'main:call_select_antenna_api')
     url = f'http://{switch_host}/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
     asyncio.create_task(call_api(url, msg, msgq))
 
@@ -291,6 +292,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
     if verb == 'GET':
         payload = read_config()
         # payload.pop('secret')  # do not return the secret
+        payload['secret'] = 'REDACTED'  # do not return the actual secret
         response = json.dumps(payload).encode('utf-8')
         http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
@@ -455,6 +457,7 @@ async def new_band(new_band_number):
         #                              '12345678901234567890'
         await update_radio_display(None, '*No Antenna for Band')
     else:
+        logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
         await update_radio_display(None, '')
         current_antenna_list_index = 0
         switch_host = config.get('switch_ip', 'localhost')
@@ -463,6 +466,7 @@ async def new_band(new_band_number):
 
 async def change_band_antenna(up=True):
     global current_antenna_list_index
+    logging.info(f'change_band_antenna(up={up})', 'main:change_band_antenna')
     if len(band_antennae) <= 1:
         return False
     if up:
@@ -480,10 +484,10 @@ async def change_band_antenna(up=True):
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
 async def update_radio_display(line1=None, line2=None):
     global radio_status
-    if line1 is not None:
+    if line1 is not None and radio_status[0] != line1:
         radio_status[0] = line1
         await msgq.put((MSG_LCD_LINE0, line1))  # update display
-    if line2 is not None:
+    if line2 is not None and radio_status[1] != line2:
         radio_status[1] = line2
         await msgq.put((MSG_LCD_LINE1, line2))  # update display
 
@@ -495,10 +499,10 @@ async def show_radio_display():
 
 async def update_network_display(line1=None, line2=None):
     global network_status
-    if line1 is not None:
+    if line1 is not None and line1 != network_status[0]:
         network_status[0] = line1
         await msgq.put((MSG_LCD_LINE0, line1))  # update display
-    if line2 is not None:
+    if line2 is not None and line2 != network_status[1]:
         network_status[1] = line2
         await msgq.put((MSG_LCD_LINE1, line2))  # update display
 
@@ -524,9 +528,10 @@ async def show_edit_display(menu_number, item_number):
 
 
 async def msg_loop(q):
-    global current_antenna, current_antenna_name, current_band_number, radio_name, \
-        antenna_names, antenna_bands, band_antennae, radio_power, current_antenna_list_index, \
-        menu_state, switch_connected
+    global antenna_bands, antenna_names, band_antennae, \
+        current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
+        menu_state, network_connected, radio_name, radio_power,  \
+        switch_connected
 
     switch_host = config.get('switch_ip', 'localhost')
     status_url = f'http://{switch_host}/api/status'
@@ -614,9 +619,15 @@ async def msg_loop(q):
                 await update_radio_display(f'{radio_name} No Power', None)
         elif m0 == MSG_NETWORK_UPDOWN:
             # network up/down
+            if logging.should_log(logging.DEBUG):
+                logging.debug(f'msg received: {msg}', 'main:msg_loop:MSG_NETWORK_UPDOWN')
             if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
+                network_connected = True
                 asyncio.create_task(call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq))
+            else:
+                logging.info('Network is DOWN!', 'main:msg_loop')
+                network_connected = False
         elif m0 == MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             # await asyncio.sleep_ms(50)
@@ -678,7 +689,8 @@ async def msg_loop(q):
 
             if not radio_power:
                 msg = f'{radio_name} no power'
-                logging.info(msg, 'main:msg_loop')
+                # if logging.should_log(logging.DEBUG):
+                logging.debug(msg, 'main:msg_loop')
                 await update_radio_display(msg, None)
                 set_inhibit(1)
             else:
@@ -735,6 +747,15 @@ async def net_msg_func(message: str, msg_status=0) -> None:
         await msgq.put((MSG_NETWORK_UPDOWN, 1))
 
 
+async def poll_switch(delay):
+    while True:
+        if network_connected:
+            switch_host = config.get('switch_ip', 'localhost')
+            status_url = f'http://{switch_host}/api/status'
+            asyncio.create_task(call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq))
+        await asyncio.sleep(delay)
+
+
 async def main():
     global keep_running, config, restart
     config = read_config()
@@ -748,6 +769,7 @@ async def main():
     if upython:
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
+        switch_poller_task = asyncio.create_task(poll_switch(10))
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
     http_server.add_uri_callback('/', slash_callback)
@@ -766,12 +788,13 @@ async def main():
     while keep_running:
         await asyncio.sleep(1.0)
     if upython:
+        logging.warning('calling soft_reset', 'main:main')
         machine.soft_reset()
 
 
 if __name__ == '__main__':
-    # logging.loglevel = logging.DEBUG  # TODO FIXME
-    logging.loglevel = logging.INFO
+    logging.loglevel = logging.DEBUG  # TODO FIXME
+    # logging.loglevel = logging.INFO
     logging.info('starting', 'main:__main__')
     try:
         asyncio.run(main())
