@@ -290,10 +290,9 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     global config
     if verb == 'GET':
-        payload = read_config()
-        # payload.pop('secret')  # do not return the secret
-        payload['secret'] = 'REDACTED'  # do not return the actual secret
-        response = json.dumps(payload).encode('utf-8')
+        response = read_config()
+        # response.pop('secret')  # do not return the secret
+        response['secret'] = 'REDACTED'  # do not return the actual secret
         http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == 'POST':
@@ -406,8 +405,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/kpa_status'
-    payload = {'lcd_lines': [lcd[0], lcd[1]]}
-    response = json.dumps(payload).encode('utf-8')
+    response = {'lcd_lines': [lcd[0], lcd[1]]}
     http_status = HTTP_STATUS_OK
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
@@ -793,8 +791,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    logging.loglevel = logging.DEBUG  # TODO FIXME
-    # logging.loglevel = logging.INFO
+    # logging.loglevel = logging.DEBUG  # TODO CLEANUP
+    logging.loglevel = logging.INFO
     logging.info('starting', 'main:__main__')
     try:
         asyncio.run(main())
