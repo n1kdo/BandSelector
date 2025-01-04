@@ -99,6 +99,7 @@ class HttpServer:
         self.content_dir = content_dir
         self.uri_map = {}
         self.buffer = bytearray(self.BUFFER_SIZE)
+        self.bmv = memoryview(self.buffer)
 
     def add_uri_callback(self, uri, callback):
         self.uri_map[uri] = callback
@@ -123,15 +124,15 @@ class HttpServer:
         try:
             with open(filename, 'rb', self.BUFFER_SIZE) as infile:
                 while True:
-                    bytes_read = infile.readinto(self.buffer)
+                    bytes_read = infile.readinto(self.bmv)
                     if bytes_read == self.BUFFER_SIZE:
-                        writer.write(self.buffer)
+                        writer.write(self.bmv)
                     else:
-                        writer.write(self.buffer[0:bytes_read])
+                        writer.write(self.bmv[0:bytes_read])
                     if bytes_read < self.BUFFER_SIZE:
                         break
         except Exception as exc:
-            logging.error('{type(exc)} {exc}', 'http_server:serve_content')
+            logging.error(f'{type(exc)} {exc}', 'http_server:serve_content')
         return content_length, http_status
 
     def start_response(self, writer, http_status=HTTP_STATUS_OK, content_type=None, response_size=0, extra_headers=None):
@@ -149,10 +150,25 @@ class HttpServer:
         writer.write(b'\r\n')
 
     def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=None, response=None, extra_headers=None):
-        content_length = len(response) if response else 0
-        self.start_response(writer, http_status, content_type, content_length, extra_headers)
-        if response is not None and len(response) > 0:
-            writer.write(response)
+        content_length = 0
+        typ = type(response)
+        if response is None:
+            self.start_response(writer, http_status, None, 0, extra_headers)
+        elif typ == bytes:
+            content_length = len(response)
+            self.start_response(writer, http_status, content_type, content_length, extra_headers)
+            if response is not None and len(response) > 0:
+                writer.write(response)
+        elif typ in [dict, list]:
+            response = json.dumps(response).encode('utf-8')
+            content_length = len(response)
+            content_type = HttpServer.CT_APP_JSON
+            self.start_response(writer, http_status, content_type, content_length, extra_headers)
+            if content_length > 0:
+                writer.write(response)
+                writer.drain()
+        else:
+            logging.error(f'trying to serialize {typ} response.', 'http_server:send_simple_response')
         return content_length
 
     @classmethod
@@ -295,14 +311,13 @@ def file_size(filename):
 # noinspection PyUnusedLocal
 async def api_get_files_callback(http, verb, args, reader, writer, request_headers=None):
     if verb == 'GET':
-        payload = os.listdir(http.content_dir)
-        response = json.dumps(payload).encode('utf-8')
+        response = os.listdir(http.content_dir)
         http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     else:
         http_status = HTTP_STATUS_BAD_REQUEST
         response = b'only GET permitted'
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
