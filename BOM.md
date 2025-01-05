@@ -19,7 +19,7 @@ Costs are approximate, they were checked 2025-01-05.
 | SW1, 2, 3, 4 | Tactile Pushbutton                                   | Same Sky          | TS02-66-130-BK-100-LCR-D  |  0.14 |      0.56 |
 | U1           | 2x20 backit LCD display 3.3 volt                     | New Haven Display | NHD-0220FZ-FSW-GBW-P-33V3 | 12.66 |     12.66 |
 | PCB          | N1KDO Display Board PCB V 0.0.4                      |                   | Oshpark                   |  7.30 |      7.30 |
-| **Total**    |                                                      |                   |                           |       | **31.50** |
+| **Total**    |                                                      |                   |                           |       | **24.50** |
 
 ## Main Board Bill of Materials
 
@@ -48,10 +48,10 @@ Costs are approximate, they were checked 2025-01-05.
 | R11               | Carbon Film Resistors - Through Hole 1/4W 470 Ohm 5%                    | Yageo                 | CFR-25JB-52-470R |  0.02 |  0.02 |
 | U1                | Single Board Computers Raspberry Pi Pico W                              | Raspberry Pi          | SC0918           |  6.00 |  6.00 |
 | U2                | Linear Voltage Regulators 5.0V 1.5A Positive                            | STMicroelectronics    | L7805CV          |  0.48 |  0.48 |
-| PCB               | N1KDO Band Selector Board PCB V 0.0.4                                   | Oshpark               |                  |     ? | 21.20 |
+| PCB               | N1KDO Band Selector Board PCB V 0.0.4                                   | Oshpark               |                  | 21.20 | 21.20 |
 | Enclosure         | Enclosures, Boxes, & Cases FR ABS w/Flanged Lid 7.6x4.4x2.2" Black      | Hammond Manufacturing | 1591XXEFLBK      | 12.89 | 12.89 |
-| **Total**         |                                                                         |                       |                  |       | 50.50 |
+| **Total**         |                                                                         |                       |                  |       | 52.91 |
 
-Total Band Selector approximate cost $82/radio.
+Total Band Selector approximate cost about $77/radio.
 
 n1kdo 20250105

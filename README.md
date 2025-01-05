@@ -10,7 +10,7 @@ How is it different from commercial-off-the-shelf solutions?
   the 15-pin accessory connector, and supply DC to the coaxial
   power jack. 
 * Automatic TX Inhibit prevents TX into wrong/no antenna.
-* Cheap cheap compared to existing commercial solutions.
+* Cheap cheap compared to existing commercial solutions. About $77 for each band selector.
 * Open Source Hardware and Software.  Do what you will with attribution.
 
 ![Band Selector](images/band-selector.jpg "Band Selector") Band Selector
@@ -25,9 +25,6 @@ is also provided DC power.  That is all the wiring that is needed at the radio.
 The Band Selectors both communicate with a
 [Antenna Switch Controller](https://github.com/n1kdo/AntennaSwitchControl), 
 which provides control voltage steering to a antenna switch.  
-
-blah blah only DC needed etc etc.
-
 
 The project is in two pieces:
 
