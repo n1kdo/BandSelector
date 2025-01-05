@@ -2,9 +2,13 @@
 
 This project is intended to operate a remote antenna switch.
 
-How is it different than commercial-off-the-shelf solutions?
-* Direct interface with Elecraft 15-Pin interface.
-* Wireless! It runs over Wifi, no wiring, no lightning arrestors.
+How is it different from commercial-off-the-shelf solutions?
+* Direct interface with Elecraft 15-Pin interface. Use Y-cable
+  or Y-box
+  * it's not designed for other radios.
+* Wireless! It runs over WiFi, connect the band selector to 
+  the 15-pin accessory connector, and supply DC to the coaxial
+  power jack. 
 * Automatic TX Inhibit prevents TX into wrong/no antenna.
 * Cheap cheap compared to existing commercial solutions.
 * Open Source Hardware and Software.  Do what you will with attribution.
@@ -13,6 +17,18 @@ How is it different than commercial-off-the-shelf solutions?
 
 ![With K3](images/with-k3.jpg "Interfaced with K3") Interfaced with K3
 
+# How it works
+
+Each of two Elecraft K3 or K4 radios is connected to a Band Selector, which
+is also provided DC power.  That is all the wiring that is needed at the radio.
+
+The Band Selectors both communicate with a
+[Antenna Switch Controller](https://github.com/n1kdo/AntennaSwitchControl), 
+which provides control voltage steering to a antenna switch.  
+
+blah blah only DC needed etc etc.
+
+
 The project is in two pieces:
 
   * The [Antenna Switch Controller](https://github.com/n1kdo/AntennaSwitchControl) provides a IOT endpoint for managing a 2x6 or 2x8
@@ -20,7 +36,7 @@ The project is in two pieces:
   * The Band Selector interfaces with a K3 or K4 radio, and provides the following functions:
     * Decodes selected bands from Elecraft radio AUX jack.
     * Requests antenna from the controller.
-    * If the requested band antenna cannot be selected, activate the radios'  TX INHIBIT
+    * If the requested band antenna cannot be selected, activate the radios' TX INHIBIT
       logic to prevent transmit.
     * The Band Selector includes a 2nd circuit board for the display.
   
