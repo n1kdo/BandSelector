@@ -3,14 +3,17 @@
 This project is intended to operate a remote antenna switch.
 
 How is it different from commercial-off-the-shelf solutions?
-* Direct interface with Elecraft 15-Pin interface. Use Y-cable
-  or Y-box
-  * it's not designed for other radios.
+* Direct interface with Elecraft 15-Pin interface. It reads BCD band
+  data using the Elecraft Y-cable or a device like a Y-box.
+  * provides transmit inhibit and power sense/control.
+  * it's not designed for other radios.  Tested on Elecraft only.
 * Wireless! It runs over WiFi, connect the band selector to 
   the 15-pin accessory connector, and supply DC to the coaxial
   power jack. 
 * Automatic TX Inhibit prevents TX into wrong/no antenna.
-* Cheap cheap compared to existing commercial solutions. About $77 for each band selector.
+* Cheap cheap compared to existing commercial solutions. 
+  About $77 for each band selector, if you build one or two yourself.
+  (Circuit boards come in threes from Oshpark.)
 * Open Source Hardware and Software.  Do what you will with attribution.
 
 ![Band Selector](images/band-selector.jpg "Band Selector") Band Selector
