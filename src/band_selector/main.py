@@ -239,7 +239,7 @@ async def api_response(resp, msg, msgq):
         payload = await resp.read()
     except Exception as ex:
         logging.exception('did not read payload', 'main:api_response', ex)
-        payload = ''
+        payload = b'{"error": "api read error"}'
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
@@ -262,12 +262,14 @@ async def call_api(url, msg, msgq):
     except asyncio.TimeoutError as ex:
         errmsg = f'timed out on api call to {url}'
         logging.warning(errmsg, 'main:call_api')
-        msg = (msg[0], (0, errmsg))
+        emsg = f'{{"error": "{errmsg}"}}'.encode()
+        msg = (msg[0], (0, emsg))
         await msgq.put(msg)
     except Exception as ex:
         errmsg = f'failed to execute api call to {url}'
         logging.exception(errmsg, 'main:call_api', ex)
-        msg = (msg[0], (0, errmsg))
+        emsg = f'{{"error": "{errmsg}"}}'.encode()
+        msg = (msg[0], (0, emsg))
         await msgq.put(msg)
 
 
@@ -658,7 +660,8 @@ async def msg_loop(q):
                 try:
                     switch_data = json.loads(m1[1])
                     switch_connected = True
-                except json.decoder.JSONDecodeError as jde:
+                    #except json.decoder.JSONDecodeError as jde:
+                except Exception as jde:
                     switch_connected = False
                     logging.exception('cannot decode json', 'main:msg_loop', jde)
                     switch_data = {}
@@ -679,7 +682,7 @@ async def msg_loop(q):
                 else:
                     current_antenna_name = f'unknown antenna {current_antenna}'
             else:
-                logging.error(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
+                logging.warning(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
                 switch_connected = False
                 current_antenna = -1
                 current_antenna_name = 'no antenna switch!'
@@ -708,9 +711,15 @@ async def msg_loop(q):
                         # try to get the right band...
                         await new_band(current_band_number)
         elif m0 == MSG_ANTENNA_RESPONSE:  # http select antenna response
+            # print(f'm1={m1}')  # FIXME
             http_status = m1[0]
             payload = m1[1].decode().strip()
-            if http_status == HTTP_STATUS_OK:
+            if http_status == 0: # api call failed
+                switch_connected = False
+                current_antenna = -1
+                current_antenna_name = 'no antenna switch!'
+                await update_radio_display(None, current_antenna_name)
+            elif http_status == HTTP_STATUS_OK:
                 asyncio.create_task(call_api(status_url, (MSG_STATUS_RESPONSE, None), msgq))
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
@@ -767,10 +776,12 @@ async def main():
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
 
+    poll_delay = safe_int(config.get('poll_delay') or 10, 10)
+
     if upython:
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
-        switch_poller_task = asyncio.create_task(poll_switch(10))
+        switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
     http_server.add_uri_callback('/', slash_callback)
