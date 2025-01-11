@@ -135,14 +135,17 @@
             let config = JSON.parse(message);
             document.getElementById("radio_number").value = config.radio_number;
             document.getElementById("switch_ip").value = config.switch_ip;
+            document.getElementById("poll_delay").value = config.poll_delay;
         }
 
         function set_config() {
             let radio_number = document.getElementById("radio_number").value;
             let switch_ip = document.getElementById("switch_ip").value;
+            let poll_delay = document.getElementById("poll_delay").value;
             let config = {};
             config.radio_number = radio_number;
             config.switch_ip = switch_ip;
+            config.poll_delay = poll_delay;
             let payload = JSON.stringify(config);
             let xmlHttp = new XMLHttpRequest();
             if (xmlHttp == null) {
@@ -176,6 +179,10 @@
                     <label for="switch_ip">Switch IP Address:</label>
                     <input type="text" id="switch_ip" maxlength="15">
                 </p>
+                <p>
+                    <label for="poll_delay">Switch Poll Delay:</label>
+                    <input type="text" id="poll_delay" min="3" max="600">
+                </p>
             </form>
             <div class="centered">
                 <input type="button" id="reset_button" value="Reset" title="Reload Configuration"
@@ -190,7 +197,7 @@
                 <a href="network.html">Network</a>
                 <a href="files.html">Files</a>
             </div>
-            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20241001</div>
+            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250111</div>
         </div>
     </body>
 </html>

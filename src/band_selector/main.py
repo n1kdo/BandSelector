@@ -3,8 +3,8 @@
 #
 
 __author__ = 'J. B. Otterson'
-__copyright__ = 'Copyright 2022, 2024 J. B. Otterson N1KDO.'
-__version__ = '0.0.9'
+__copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
+__version__ = '0.1.1'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -49,7 +49,6 @@ import asyncio
 
 if upython:
     import machine
-    import network
     from picow_network import PicowNetwork
 else:
     from not_machine import machine
@@ -224,6 +223,7 @@ def default_config():
         'dns_server': '8.8.8.8',
         'radio_number': '1',
         'switch_ip': '192.168.1.166',
+        'poll_delay': '10',
     }
 
 
@@ -373,6 +373,13 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 dirty = True
             else:
                 errors = True
+        poll_delay = safe_int(args.get('poll_delay'), -1)
+        if poll_delay > 0:
+            if 0 <= poll_delay < 60:
+                config['poll_delay'] = poll_delay
+                dirty = True
+            else:
+                errors = True
         if not errors:
             if dirty:
                 save_config(config)
@@ -406,8 +413,11 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
     return bytes_sent, http_status
 
 
-async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/kpa_status'
-    response = {'lcd_lines': [lcd[0], lcd[1]]}
+async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/status'
+    response = {'lcd_lines': [lcd[0], lcd[1]],
+                'radio_power': radio_power,
+                'switch_connected': switch_connected,
+                }
     http_status = HTTP_STATUS_OK
     bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
@@ -753,7 +763,7 @@ async def net_msg_func(message: str, msg_status=0) -> None:
         await update_network_display(message)
     else:
         await update_network_display(lines[0], lines[1])
-    if msg_status == network.STAT_GOT_IP:
+    if msg_status == 1:
         await msgq.put((MSG_NETWORK_UPDOWN, 1))
 
 

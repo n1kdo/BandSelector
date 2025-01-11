@@ -4,11 +4,11 @@
 #
 
 __author__ = 'J. B. Otterson'
-__copyright__ = 'Copyright 2024, J. B. Otterson N1KDO.'
-__version__ = '0.9.4'
+__copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
+__version__ = '0.9.6'
 
 #
-# Copyright 2024, J. B. Otterson N1KDO.
+# Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
@@ -45,6 +45,7 @@ else:
 import asyncio
 import socket
 
+HAS_DISPLAY = True  # TODO fix this rudeness
 
 class PicowNetwork:
     network_status_map = {
@@ -62,10 +63,11 @@ class PicowNetwork:
                  default_ssid:str='PICO-W',
                  default_secret:str='PICO-W',
                  message_func=None) -> None:
+        self._connected = False
+        self._default_secret = default_secret
+        self._default_ssid = default_ssid
         self._keepalive = False
         self._message_func = message_func
-        self._default_ssid = default_ssid
-        self._default_secret = default_secret
         self._ssid = config.get('SSID') or default_ssid
         if len(self._ssid) == 0 or len(self._ssid) > 64:
             self._ssid = default_ssid
@@ -88,7 +90,10 @@ class PicowNetwork:
         self._dns_server = config.get('dns_server')
         self._message = ''
         self._status = 0
-        self.set_message('Network INIT', 0)
+        if HAS_DISPLAY:
+            self.set_message('Network INIT', 0)
+        else:
+            self.set_message('INIT ', 0)
         self._wlan = None
         asyncio.create_task(self.keep_alive())
 
@@ -102,9 +107,11 @@ class PicowNetwork:
         network.country('US')
         sleep = asyncio.sleep
         wl_status = 0
+        self._connected = False
 
         if self._access_point_mode:
-            await self.set_message('Starting setup WLAN...')
+            if HAS_DISPLAY:
+                await self.set_message('Starting setup WLAN...')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.AP_IF)
             self._wlan.deinit()
@@ -119,11 +126,15 @@ class PicowNetwork:
             onboard.on()
 
             try:
-                await self.set_message(f'Setting hostname "{self._hostname}"')
+                if HAS_DISPLAY:
+                    await self.set_message(f'Setting hostname "{self._hostname}"')
                 logging.info(f'  Setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:
-                await self.set_message('Failed to set hostname.', -10)
+                if HAS_DISPLAY:
+                    await self.set_message('Failed to set hostname.', -10)
+                else:
+                    await self.set_message('ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
 
             #
@@ -151,7 +162,8 @@ class PicowNetwork:
             logging.info(f'  ssid={self._wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ifconfig={self._wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
         else:
-            await self.set_message('Connecting to WLAN...')
+            if HAS_DISPLAY:
+                await self.set_message('Connecting to WLAN...')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.STA_IF)
             self._wlan.disconnect()
@@ -165,11 +177,15 @@ class PicowNetwork:
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
             onboard.on()
             try:
-                await self.set_message(f'Setting hostname\n{self._hostname}')
+                if HAS_DISPLAY:
+                    await self.set_message(f'Setting hostname\n{self._hostname}')
                 logging.info(f'...setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:
-                await self.set_message('Failed to set hostname.', -10)
+                if HAS_DISPLAY:
+                    await self.set_message('Failed to set hostname.', -10)
+                else:
+                    await self.set_message('ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
             self._wlan.active(True)
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
@@ -196,10 +212,10 @@ class PicowNetwork:
 
             max_wait = 15
             st = ''
-            await self.set_message(f'Connecting to\n{self._ssid}')
+            if HAS_DISPLAY:
+                await self.set_message(f'Connecting to\n{self._ssid}')
             self._wlan.connect(self._ssid, self._secret)
-            ssid = self._wlan.config('ssid')
-            logging.info(f'...connecting to "{ssid}"...', 'PicowNetwork:connect_to_network')
+            logging.info(f'...connecting to "{self._ssid}"...', 'PicowNetwork:connect_to_network')
             last_wl_status = -9
             while max_wait > 0:
                 wl_status = self._wlan.status()
@@ -213,19 +229,29 @@ class PicowNetwork:
                 await sleep(1)
             if wl_status != network.STAT_GOT_IP:
                 logging.warning(f'...network connect timed out: {wl_status}', 'PicowNetwork:connect_to_network')
-                await self.set_message(f'Error {wl_status}\n{st}', wl_status)
+                if HAS_DISPLAY:
+                    await self.set_message(f'Error {wl_status}\n{st}', -2)
+                else:
+                    await self.set_message('ERROR ', -2)
                 return None
+            self._connected = True
             logging.info(f'...connected: {self._wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
 
         onboard.on()  # turn on the LED, WAN is up.
         wl_config = self._wlan.ipconfig('addr4')  # get use str param name.
         ip_address = wl_config[0]
         ssid = self._wlan.config('ssid')
-        if self._access_point_mode:
-            msg = f'{ssid}\nAP: {ip_address}'
+        if HAS_DISPLAY:
+            if self._access_point_mode:
+                msg = f'{ssid}\nAP: {ip_address}'
+            else:
+                msg = f'{ssid}\n{ip_address}'
         else:
-            msg = f'{ssid}\n{ip_address}'
-        await self.set_message(msg, wl_status)
+            if self._access_point_mode:
+                msg = f'AP: {ip_address} '
+            else:
+                msg = f'{ip_address} '
+        await self.set_message(msg, 1)
         return
 
     def ifconfig(self):
@@ -270,7 +296,8 @@ class PicowNetwork:
             logging.warning('Network not initialized.', 'PicowNetwork:status')
 
     def is_connected(self):
-        return self._wlan.isconnected() if self._wlan is not None else False
+        return self._connected
+        # return self._wlan.isconnected() if self._wlan is not None else False
 
     def has_wan(self):
         if not self.is_connected():
@@ -315,15 +342,15 @@ class PicowNetwork:
         # eliminate >1 dict lookup
         sleep = asyncio.sleep
         while self._keepalive:
-            connected = self.is_connected()
+            # connected = self.is_connected()
             if logging.should_log(logging.DEBUG):
-                logging.debug(f'self.is_connected() = {self.is_connected()}','PicowNetwork.keepalive')
-            if not connected:
+                logging.debug(f'self.is_connected() = {self._connected}', 'PicowNetwork.keepalive')
+            if not self._connected:
                 logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
                 await self.connect()
             else:
                 if logging.should_log(logging.DEBUG):
-                    logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
+                    logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
             await sleep(10)  # check network every 10 seconds
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
