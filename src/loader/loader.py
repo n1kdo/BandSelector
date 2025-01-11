@@ -45,7 +45,11 @@ def get_ports_list():
 
 # noinspection PyUnusedLocal
 def put_file_progress_callback(bytes_so_far, bytes_total):
-    print('.', end='')
+    print(f'{bytes_so_far:05d}/{bytes_total:05d} bytes downloaded\r',end='')
+    #if bytes_so_far & 0x03ff == 0:
+    #    print('.', end='')
+    ##else:
+    #    print('.')
 
 
 def put_file(filename, target, source_directory='.', src_file_name=None):
@@ -54,7 +58,7 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
     else:
         src_file_name = source_directory + src_file_name
 
-    if filename[-1:] == '/':
+    if filename[-1:] == '/':  # does it end in a slash?
         filename = filename[:-1]
         try:
             target.fs_mkdir(filename)
@@ -66,7 +70,7 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
     else:
         try:
             os.stat(src_file_name)
-            print(f'sending file {src_file_name} to {filename} ', end='')
+            print(f'sending file {src_file_name} to {filename}')
             target.fs_put(src_file_name, filename, progress_callback=put_file_progress_callback)
             print()
         except OSError:
@@ -149,6 +153,7 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
     except FileNotFoundError:
         logging.error(f'cannot open manifest file {manifest_filename}.')
         raise
+
     try:
         target = Pyboard(port, BAUD_RATE)
     except PyboardError:
@@ -187,6 +192,7 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
             if file in existing_files:
                 picow_hash = loader_sha1(target, file)
                 local_hash = local_sha1(source_directory + file)
+                picow_hash += '1'  # FIXME deliberately broken
                 if picow_hash == local_hash:
                     continue
             put_file(file, target, source_directory=source_directory)
