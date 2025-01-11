@@ -61,11 +61,11 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
     if filename[-1:] == '/':  # does it end in a slash?
         filename = filename[:-1]
         try:
+            print(f'creating target directory {filename}')
             target.fs_mkdir(filename)
-            print(f'created directory {filename}')
         except PyboardError as exc:
             if 'EEXIST' not in str(exc):
-                print(f'failed to create directory {filename}')
+                print(f'failed to create target directory {filename}')
                 print(type(exc), exc)
     else:
         try:
@@ -204,31 +204,20 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
         if file not in existing_files:
             put_file(file, target, source_directory=source_directory, src_file_name=f'{file}.example')
     target.exit_raw_repl()
-    target.close()
-
-    # this is a hack that allows the Pico-W to be restarted by this script.
-    # it exits the REPL by sending a control-D.
-    # why this functionality is not the Pyboard module is a good question.
-    with serial.Serial(port=port,
-                       baudrate=BAUD_RATE,
-                       parity=serial.PARITY_NONE,
-                       bytesize=serial.EIGHTBITS,
-                       stopbits=serial.STOPBITS_ONE,
-                       timeout=1) as pyboard_port:
-        pyboard_port.write(b'\x04')
-        print('\nDevice should restart.')
-        # now just echo the Pico-W output to the console.
+    # done updating file system, restart the device and show the output
+    print('Device should restart.')
+    target.serial.write(b"\x04")  # control-D -- restart
+    try:
         while True:
-            try:
-                b = pyboard_port.read(1)
-                sys.stdout.write(b.decode())
-            except serial.SerialException:
-                print(f'\n\nLost connection to device on {port}, exiting.')
-                break
-            except KeyboardInterrupt:
-                print('got keyboard interrupt, exiting.')
-                break
+            b = target.serial.read(1)
+            sys.stdout.write(b.decode())
+    except serial.serialutil.SerialException:
+        print("Error: Serial Exception, did the port go away?  Did you unplug the USB cable?")
+    except Exception as e:
+        print(str(e))
+        print(type(e))
 
+    target.close()
 
 
 def main():
@@ -269,7 +258,7 @@ def main():
         print('Could not identify Pico-W communications port.  Exiting.')
         sys.exit(1)
 
-    print(f'\nAttempting to load device on port {picow_port}')
+    print(f'Loading device on {picow_port}...')
     load_device(picow_port, force, manifest_filename=args.manifest_filename)
 
 
