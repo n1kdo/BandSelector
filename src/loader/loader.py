@@ -192,7 +192,6 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
             if file in existing_files:
                 picow_hash = loader_sha1(target, file)
                 local_hash = local_sha1(source_directory + file)
-                picow_hash += '1'  # FIXME deliberately broken
                 if picow_hash == local_hash:
                     continue
             put_file(file, target, source_directory=source_directory)
