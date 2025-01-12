@@ -1,7 +1,7 @@
 #!/bin/env python3
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2022, 2024 J. B. Otterson N1KDO.
+Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -20,12 +20,11 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.5'
+__version__ = '0.9.7'
 
 import argparse
 import hashlib
 import json
-import logging
 import os
 import sys
 
@@ -45,11 +44,7 @@ def get_ports_list():
 
 # noinspection PyUnusedLocal
 def put_file_progress_callback(bytes_so_far, bytes_total):
-    print(f'{bytes_so_far:05d}/{bytes_total:05d} bytes downloaded\r',end='')
-    #if bytes_so_far & 0x03ff == 0:
-    #    print('.', end='')
-    ##else:
-    #    print('.')
+    print(f'{bytes_so_far:05d}/{bytes_total:05d} bytes sent.\r',end='')
 
 
 def put_file(filename, target, source_directory='.', src_file_name=None):
@@ -66,7 +61,6 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
         except PyboardError as exc:
             if 'EEXIST' not in str(exc):
                 print(f'failed to create target directory {filename}')
-                print(type(exc), exc)
     else:
         try:
             os.stat(src_file_name)
@@ -115,7 +109,7 @@ def loader_ls(target, src='/'):
 
 
 def loader_sha1(target, file=''):
-    hash = BytesConcatenator()
+    hash_data = BytesConcatenator()
     cmd = (
         "import hashlib\n"
         "hasher = hashlib.sha1()\n"
@@ -127,8 +121,8 @@ def loader_sha1(target, file=''):
         "    hasher.update(buffer)\n"
         "print(bytes.hex(hasher.digest()))"
     )
-    target.exec_(cmd, data_consumer=hash.write_bytes)
-    result = str(hash).strip()
+    target.exec_(cmd, data_consumer=hash_data.write_bytes)
+    result = str(hash_data).strip()
     return result
 
 
@@ -151,14 +145,15 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
             special_files_list = manifest.get('special_files', [])
             source_directory = manifest.get('source_directory', '.')
     except FileNotFoundError:
-        logging.error(f'cannot open manifest file {manifest_filename}.')
-        raise
+        print(f'cannot open manifest file {manifest_filename}.')
+        sys.exit(1)
 
     try:
         target = Pyboard(port, BAUD_RATE)
     except PyboardError:
         print(f'cannot connect to device {port}')
         sys.exit(1)
+
     target.enter_raw_repl()
 
     # clean up files that do not belong here.
@@ -236,6 +231,8 @@ def main():
     args = parser.parse_args()
     if 'force' in args:
         force = args.force
+    else:
+        force = False
     if 'port' in args and args.port is not None:
         picow_port = args.port
     else:
