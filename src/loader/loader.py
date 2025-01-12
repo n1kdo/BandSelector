@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.7'
+__version__ = '0.9.8'
 
 import argparse
 import hashlib
@@ -191,7 +191,8 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
                     continue
             put_file(file, target, source_directory=source_directory)
         else:
-            put_file(file, target, source_directory=source_directory)
+            if file not in existing_files:
+                put_file(file, target, source_directory=source_directory)
 
     # this is logic that will not overwrite any of the SPECIAL FILES if present,
     # if it is not present, it will use the contents of $file.example
