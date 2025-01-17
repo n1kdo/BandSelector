@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.8'
+__version__ = '0.10.0'
 
 import argparse
 import hashlib
@@ -28,18 +28,15 @@ import json
 import os
 import sys
 
-import serial
+# need pyserial to enumerate com ports.
 from serial.tools.list_ports import comports
+from serial import SerialException
 from pyboard import Pyboard, PyboardError
 BAUD_RATE = 115200
 
 
 def get_ports_list():
-    ports = comports()
-    ports_list = []
-    for port in ports:
-        ports_list.append(port.device)
-    return sorted(ports_list)
+    return sorted([x.device for x in comports()])
 
 
 # noinspection PyUnusedLocal
@@ -207,7 +204,7 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
         while True:
             b = target.serial.read(1)
             sys.stdout.write(b.decode())
-    except serial.serialutil.SerialException:
+    except SerialException:
         print("Error: Serial Exception, did the port go away?  Did you unplug the USB cable?")
     except Exception as e:
         print(str(e))

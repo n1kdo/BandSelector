@@ -647,7 +647,7 @@ async def msg_loop(q):
             # await asyncio.sleep_ms(50)
             logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
         elif m0 == MSG_BAND_CHANGE:  # band change detected
-            logging.info(f'band change, power = {radio_power}', 'main:msg_loop')
+            logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
             if not radio_power:
                 await update_radio_display(f'{radio_name} No Power', None)
                 set_inhibit(1)
