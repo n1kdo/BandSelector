@@ -426,9 +426,13 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
 
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
-    response = b'ok'
+    # send the status response message
+    response = {'lcd_lines': [lcd[0], lcd[1]],
+                'radio_power': radio_power,
+                'switch_connected': switch_connected,
+                }
     http_status = HTTP_STATUS_OK
-    bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+    bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
 
@@ -452,8 +456,9 @@ def set_inhibit(inhibit):
 
 async def power_on():
     poweron_pin.on()
-    await asyncio.sleep(0.100)
+    await asyncio.sleep(0.1)
     poweron_pin.off()
+    await asyncio.sleep(0.5)
 
 
 async def new_band(new_band_number):

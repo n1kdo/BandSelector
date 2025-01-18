@@ -57,9 +57,19 @@
         font-weight: bold;
         border-bottom: 24px;
     }
-    
+
+    div.poweroff {
+        display: none;
+        text-align: center;
+    }
+
+    .power_button {
+        font-weight: bold;
+        color: green;
+    }
+
     div.refresh_radio {
-        margin: 10px 100px;
+        margin: 50px 100px 10px 100px;
         text-align: left;
         width: auto;
     }
@@ -70,7 +80,7 @@
         font-family: monospace;
         font-size: 20px;
         font-weight: bold;
-        margin: 50px auto;
+        margin: 50px auto 50px auto;
         text-align: center;
         width: 220px;
     }
@@ -93,6 +103,8 @@
     function process_get_status_response(message) {
         let status_data = JSON.parse(message);
         let lcd_lines = status_data.lcd_lines;
+        let radio_power = status_data.radio_power;
+
         if (lcd_lines[0].trim().length === 0) {
             lcd_lines[0] = "&nbsp;";
         }
@@ -102,6 +114,12 @@
 
         document.getElementById("lcd1").innerHTML = lcd_lines[0];
         document.getElementById("lcd2").innerHTML = lcd_lines[1];
+        let power_div = document.getElementById("poweroff");
+        if (!radio_power) {
+            power_div.style.display = "block";
+        } else {
+            power_div.style.display = "none";
+        }
 
         let button_secs = update_secs;
         if (auto_updates > 0) {
@@ -135,6 +153,21 @@
         xmlHttp.send();
     }
 
+    function power_on() {
+        let xmlHttp = new XMLHttpRequest();
+        if (xmlHttp == null) {
+            alert("get a better browser!");
+            return;
+        }
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                process_get_status_response(xmlHttp.responseText);
+            }
+        }
+        xmlHttp.open("GET", "/api/power_on_radio", true);
+        xmlHttp.send();
+    }
+
     function set_refresh(secs) {
         update_secs = secs
         if (update_secs === 0) {
@@ -153,6 +186,9 @@
 <div class="lcd">
     <span id="lcd1"></span><br>
     <span id="lcd2"></span>
+</div>
+<div class="poweroff" id="poweroff">
+    <input class="power_button" type="button" value="Power On Radio" onClick="power_on();">
 </div>
 <div class="refresh_radio">
     <fieldset>
