@@ -50,6 +50,7 @@ import asyncio
 if upython:
     import machine
     from picow_network import PicowNetwork
+    from watchdog import Watchdog
 else:
     from not_machine import machine
 
@@ -789,6 +790,7 @@ async def main():
     poll_delay = safe_int(config.get('poll_delay') or 10, 10)
 
     if upython:
+        watchdog = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
         switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
@@ -815,9 +817,10 @@ async def main():
 
 
 if __name__ == '__main__':
+    reset_cause = machine.reset_cause()
     # logging.loglevel = logging.DEBUG  # TODO CLEANUP
     logging.loglevel = logging.INFO
-    logging.info('starting', 'main:__main__')
+    logging.info(f'starting, reset_cause={reset_cause}', 'main:__main__')
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

@@ -14,6 +14,7 @@
     "ringbuf_queue.py",
     "uaiohttpclient.py",
     "utils.py",
+    "watchdog.py",
     "content/favicon.ico",
     "content/files.html",
     "content/network.html",
