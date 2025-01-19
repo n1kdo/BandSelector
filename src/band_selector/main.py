@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -219,6 +219,7 @@ def default_config():
         'dhcp': True,
         'hostname': 'selector1',
         'ip_address': '192.168.1.73',
+        'log_level' : 'debug',
         'netmask': '255.255.255.0',
         'gateway': '192.168.1.1',
         'dns_server': '8.8.8.8',
@@ -303,6 +304,15 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         dirty = False
         errors = False
         problems = []
+        log_level = args.get('log_level')
+        if log_level is not None:
+            log_level = log_level.strip().upper()
+            if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+                config['log_level'] = log_level
+                dirty = True
+            else:
+                errors = True
+                problems.append('log_level')
         web_port = args.get('web_port')
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
@@ -788,6 +798,12 @@ async def main():
     if len(config) == 0:
         # create default configuration
         config = default_config()
+        save_config(config)
+
+    config_level = config.get('log_level')
+    if config_level:
+        logging.set_level(config_level)
+
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
@@ -795,7 +811,8 @@ async def main():
     poll_delay = safe_int(config.get('poll_delay') or 10, 10)
 
     if upython:
-        watchdog = Watchdog()
+        if logging.should_log(logging.DEBUG):
+            _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
         switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
@@ -823,7 +840,6 @@ async def main():
 
 if __name__ == '__main__':
     reset_cause = machine.reset_cause()
-    # logging.loglevel = logging.DEBUG  # TODO CLEANUP
     logging.loglevel = logging.INFO
     logging.info(f'starting, reset_cause={reset_cause}', 'main:__main__')
     try:
