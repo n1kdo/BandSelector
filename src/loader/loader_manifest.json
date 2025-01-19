@@ -1,5 +1,5 @@
 {
-  "source_directory" : ["../band_selector/", "../band_selector/mpy_common/"],
+  "source_directory" : "../band_selector/",
   "files": [
     "content/",
     "data/",
