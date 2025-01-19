@@ -140,7 +140,7 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
             manifest = json.load(manifest_file)
             files_list = manifest.get('files', [])
             special_files_list = manifest.get('special_files', [])
-            source_directory = manifest.get('source_directory', '.')
+            source_directories = manifest.get('source_directory', '.')
     except FileNotFoundError:
         print(f'cannot open manifest file {manifest_filename}.')
         sys.exit(1)
@@ -182,6 +182,12 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
             # and compare it with the sha1 hash of the local file.
             # do not send unchanged files.  This makes subsequent loader invocations much faster.
             if file in existing_files:
+                for source_dir in source_directories:
+                    local_file = os.path.join(source_dir, file)
+                    if os.path.exists(local_file):
+                        source_directory = source_dir
+                        break
+
                 picow_hash = loader_sha1(target, file)
                 local_hash = local_sha1(source_directory + file)
                 if picow_hash == local_hash:

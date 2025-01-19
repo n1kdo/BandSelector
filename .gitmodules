@@ -1,0 +1,3 @@
+[submodule "src/band_selector/mpy_common"]
+	path = src/band_selector/mpy_common
+	url = https://github.com/n1kdo/mpy_common.git
