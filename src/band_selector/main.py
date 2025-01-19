@@ -29,7 +29,9 @@ __version__ = '0.1.2'
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import asyncio
 import json
+import time
 
 from alcd import LCD
 from button import Button
@@ -42,10 +44,10 @@ from http_server import (HttpServer,
                          api_get_files_callback,
                          HTTP_STATUS_OK,
                          HTTP_STATUS_BAD_REQUEST)
+import micro_logging as logging
+from ntp import get_ntp_time
 from ringbuf_queue import RingbufQueue
 from utils import milliseconds, upython, safe_int, num_bits_set
-import micro_logging as logging
-import asyncio
 
 if upython:
     import machine
@@ -810,12 +812,16 @@ async def main():
 
     poll_delay = safe_int(config.get('poll_delay') or 10, 10)
 
+    time_set = False
+
     if upython:
         if logging.should_log(logging.DEBUG):
             _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func)
         msg_loop_task = asyncio.create_task(msg_loop(msgq))
         switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
+    else:
+        picow_network = None
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
     http_server.add_uri_callback('/', slash_callback)
@@ -833,6 +839,11 @@ async def main():
 
     while keep_running:
         await asyncio.sleep(1.0)
+        if picow_network is not None and picow_network.is_connected() and not time_set:
+            get_ntp_time()
+            if time.time() > 1700000000:
+                time_set = True
+
     if upython:
         logging.warning('calling soft_reset', 'main:main')
         machine.soft_reset()

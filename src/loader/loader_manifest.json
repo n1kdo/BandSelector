@@ -9,6 +9,7 @@
     "gpio_pin.py",
     "http_server.py",
     "main.py",
+    "ntp.py",
     "micro_logging.py",
     "picow_network.py",
     "ringbuf_queue.py",
