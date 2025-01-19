@@ -136,16 +136,19 @@
             document.getElementById("radio_number").value = config.radio_number;
             document.getElementById("switch_ip").value = config.switch_ip;
             document.getElementById("poll_delay").value = config.poll_delay;
+            document.getElementById("log_level").value = config.log_level;
         }
 
         function set_config() {
             let radio_number = document.getElementById("radio_number").value;
             let switch_ip = document.getElementById("switch_ip").value;
             let poll_delay = document.getElementById("poll_delay").value;
+            let log_level = document.getElementById("log_level").value;
             let config = {};
             config.radio_number = radio_number;
             config.switch_ip = switch_ip;
             config.poll_delay = poll_delay;
+            config.log_level = log_level;
             let payload = JSON.stringify(config);
             let xmlHttp = new XMLHttpRequest();
             if (xmlHttp == null) {
@@ -182,6 +185,17 @@
                 <p>
                     <label for="poll_delay">Switch Poll Delay:</label>
                     <input type="text" id="poll_delay" min="3" max="600">
+                </p>
+                <p>
+                    <label for="log_level">Log Level:</label>
+                    <select id="log_level">
+                        <option value="DEBUG">Debug</option>
+                        <option value="INFO">Info</option>
+                        <option value="WARNING">Warning</option>
+                        <option value="ERROR">Error</option>
+                        <option value="CRITICAL">Critical</option>
+                        <option value="NONE">None</option>
+                    </select>
                 </p>
             </form>
             <div class="centered">

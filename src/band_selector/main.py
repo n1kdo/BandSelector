@@ -309,7 +309,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         log_level = args.get('log_level')
         if log_level is not None:
             log_level = log_level.strip().upper()
-            if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+            if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NONE']:
                 config['log_level'] = log_level
                 dirty = True
             else:
