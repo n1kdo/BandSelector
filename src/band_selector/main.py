@@ -256,7 +256,7 @@ async def call_api(url, msg, msgq):
         logging.debug(f'calling api {url}', 'main:call_api')
         t0 = milliseconds()
     try:
-        resp = await asyncio.wait_for(aiohttp.request("GET", url),1)
+        resp = await asyncio.wait_for(aiohttp.request("GET", url),2)
         http_status = resp.status
         if logging.should_log(logging.DEBUG):
             dt = milliseconds() - t0
@@ -264,13 +264,15 @@ async def call_api(url, msg, msgq):
         msg = (msg[0], (http_status, 'no response'))
         asyncio.create_task(api_response(resp, msg, msgq))
     except asyncio.TimeoutError as ex:
-        errmsg = f'timed out on api call to {url}'
+        dt = milliseconds() - t0
+        errmsg = f'timed out on api call to {url} after {dt} ms'
         logging.warning(errmsg, 'main:call_api')
         emsg = f'{{"error": "{errmsg}"}}'.encode()
         msg = (msg[0], (0, emsg))
         await msgq.put(msg)
     except Exception as ex:
-        errmsg = f'failed to execute api call to {url}'
+        dt = milliseconds() - t0
+        errmsg = f'failed to execute api call to {url} after {dt} ms'
         logging.exception(errmsg, 'main:call_api', ex)
         emsg = f'{{"error": "{errmsg}"}}'.encode()
         msg = (msg[0], (0, emsg))
@@ -311,6 +313,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             log_level = log_level.strip().upper()
             if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NONE']:
                 config['log_level'] = log_level
+                logging.set_level(log_level)
                 dirty = True
             else:
                 errors = True

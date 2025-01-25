@@ -41,16 +41,21 @@ loglevel = ERROR
 
 level_names = ['NOTHING', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
+
 def set_level(level):
+    info(f'setting log level to {level}', 'micro_loggingL:set_level')
+
     global loglevel
     if isinstance(level, str):
         try:
             level = level_names.index(level)
         except ValueError:
             level = None
+
     if isinstance(level, int):
-        if NOTHING <= level <= CRITICAL:
+        if NOTHING <= level <= DEBUG:
             loglevel = level
+
 
 # this is used to determine if logging.level() methods should be called,
 # purpose is to reduce heap pollution from building complex log messages.
