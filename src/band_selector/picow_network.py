@@ -45,8 +45,6 @@ else:
 import asyncio
 import socket
 
-HAS_DISPLAY = False
-
 class PicowNetwork:
     network_status_map = {
         network.STAT_IDLE: 'no connection and no activity',  # 0
@@ -62,12 +60,14 @@ class PicowNetwork:
                  config: dict,
                  default_ssid:str='PICO-W',
                  default_secret:str='PICO-W',
-                 message_func=None) -> None:
+                 message_func=None,
+                 has_display=False) -> None:
         self._connected = False
         self._default_secret = default_secret
         self._default_ssid = default_ssid
         self._keepalive = False
         self._message_func = message_func
+        self._has_display = has_display
         self._ssid = config.get('SSID') or default_ssid
         if len(self._ssid) == 0 or len(self._ssid) > 64:
             self._ssid = default_ssid
@@ -90,7 +90,7 @@ class PicowNetwork:
         self._dns_server = config.get('dns_server')
         self._message = ''
         self._status = 0
-        if HAS_DISPLAY:
+        if self._has_display:
             self.set_message('Network INIT', 0)
         else:
             self.set_message('INIT ', 0)
@@ -110,7 +110,7 @@ class PicowNetwork:
         self._connected = False
 
         if self._access_point_mode:
-            if HAS_DISPLAY:
+            if self._has_display:
                 await self.set_message('Starting setup WLAN...')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.AP_IF)
@@ -126,12 +126,12 @@ class PicowNetwork:
             onboard.on()
 
             try:
-                if HAS_DISPLAY:
+                if self._has_display:
                     await self.set_message(f'Setting hostname "{self._hostname}"')
                 logging.info(f'  Setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:
-                if HAS_DISPLAY:
+                if self._has_display:
                     await self.set_message('Failed to set hostname.', -10)
                 else:
                     await self.set_message('ERROR ', -10)
@@ -162,7 +162,7 @@ class PicowNetwork:
             logging.info(f'  ssid={self._wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ifconfig={self._wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
         else:
-            if HAS_DISPLAY:
+            if self._has_display:
                 await self.set_message('Connecting to WLAN...')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.STA_IF)
@@ -177,12 +177,12 @@ class PicowNetwork:
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
             onboard.on()
             try:
-                if HAS_DISPLAY:
+                if self._has_display:
                     await self.set_message(f'Setting hostname\n{self._hostname}')
                 logging.info(f'...setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:
-                if HAS_DISPLAY:
+                if self._has_display:
                     await self.set_message('Failed to set hostname.', -10)
                 else:
                     await self.set_message('ERROR ', -10)
@@ -212,7 +212,7 @@ class PicowNetwork:
 
             max_wait = 15
             st = ''
-            if HAS_DISPLAY:
+            if self._has_display:
                 await self.set_message(f'Connecting to\n{self._ssid}')
             self._wlan.connect(self._ssid, self._secret)
             logging.info(f'...connecting to "{self._ssid}"...', 'PicowNetwork:connect_to_network')
@@ -229,10 +229,10 @@ class PicowNetwork:
                 await sleep(1)
             if wl_status != network.STAT_GOT_IP:
                 logging.warning(f'...network connect timed out: {wl_status}', 'PicowNetwork:connect_to_network')
-                if HAS_DISPLAY:
-                    await self.set_message(f'Error {wl_status}\n{st}', wl_status)
+                if self._has_display:
+                    await self.set_message(f'Error {wl_status}\n{st}', -wl_status)
                 else:
-                    await self.set_message('ERROR ', wl_status)
+                    await self.set_message('ERROR ', -wl_status)
                 return None
             self._connected = True
             logging.info(f'...connected: {self._wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
@@ -241,7 +241,7 @@ class PicowNetwork:
         wl_config = self._wlan.ipconfig('addr4')  # get use str param name.
         ip_address = wl_config[0]
         ssid = self._wlan.config('ssid')
-        if HAS_DISPLAY:
+        if self._has_display:
             if self._access_point_mode:
                 msg = f'{ssid}\nAP: {ip_address}'
             else:
@@ -251,7 +251,7 @@ class PicowNetwork:
                 msg = f'AP: {ip_address} '
             else:
                 msg = f'{ip_address} '
-        await self.set_message(msg, wl_status)
+        await self.set_message(msg, 1)
         return
 
     def ifconfig(self):
