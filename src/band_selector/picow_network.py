@@ -5,7 +5,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.6'
+__version__ = '0.9.7'
 
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
@@ -45,7 +45,7 @@ else:
 import asyncio
 import socket
 
-HAS_DISPLAY = True  # TODO fix this rudeness
+HAS_DISPLAY = False
 
 class PicowNetwork:
     network_status_map = {
@@ -230,9 +230,9 @@ class PicowNetwork:
             if wl_status != network.STAT_GOT_IP:
                 logging.warning(f'...network connect timed out: {wl_status}', 'PicowNetwork:connect_to_network')
                 if HAS_DISPLAY:
-                    await self.set_message(f'Error {wl_status}\n{st}', -2)
+                    await self.set_message(f'Error {wl_status}\n{st}', wl_status)
                 else:
-                    await self.set_message('ERROR ', -2)
+                    await self.set_message('ERROR ', wl_status)
                 return None
             self._connected = True
             logging.info(f'...connected: {self._wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
@@ -251,7 +251,7 @@ class PicowNetwork:
                 msg = f'AP: {ip_address} '
             else:
                 msg = f'{ip_address} '
-        await self.set_message(msg, 1)
+        await self.set_message(msg, wl_status)
         return
 
     def ifconfig(self):
@@ -297,7 +297,6 @@ class PicowNetwork:
 
     def is_connected(self):
         return self._connected
-        # return self._wlan.isconnected() if self._wlan is not None else False
 
     def has_wan(self):
         if not self.is_connected():
@@ -335,14 +334,12 @@ class PicowNetwork:
         finally:
             if s is not None:
                 s.close()
-                s = None
 
     async def keep_alive(self):
         self._keepalive = True
         # eliminate >1 dict lookup
         sleep = asyncio.sleep
         while self._keepalive:
-            # connected = self.is_connected()
             if logging.should_log(logging.DEBUG):
                 logging.debug(f'self.is_connected() = {self._connected}', 'PicowNetwork.keepalive')
             if not self._connected:
@@ -359,4 +356,3 @@ class PicowNetwork:
 
     def get_status(self):
         return self._status
-
