@@ -43,7 +43,7 @@ level_names = ['NOTHING', 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 
 def set_level(level):
-    info(f'setting log level to {level}', 'micro_loggingL:set_level')
+    info(f'setting log level to {level}', 'micro_logging:set_level')
 
     global loglevel
     if isinstance(level, str):
