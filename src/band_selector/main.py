@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -254,7 +254,7 @@ async def api_response(resp, msg, msgq):
 async def call_api(url, msg, msgq):
     if logging.should_log(logging.DEBUG):
         logging.debug(f'calling api {url}', 'main:call_api')
-        t0 = milliseconds()
+    t0 = milliseconds()
     try:
         resp = await asyncio.wait_for(aiohttp.request("GET", url),2)
         http_status = resp.status
@@ -673,7 +673,6 @@ async def msg_loop(q):
                 await update_radio_display(f'{radio_name} No Power', None)
                 set_inhibit(1)
             else:
-                logging.info(f'band change, sense = {m1}', 'main:msg_loop')
                 if 0 <= m1 < len(ELECRAFT_BAND_MAP):
                     current_band_number = ELECRAFT_BAND_MAP[m1]
                     if len(antenna_names) > 0:  # only change bands if there are antennas.
@@ -682,7 +681,7 @@ async def msg_loop(q):
                         await update_radio_display(f'{radio_name} {BANDS[current_band_number]}', None)
                 else:
                     msg = f'unknown band # {m1}'
-                    logging.warning(msg)
+                    logging.error(msg)
                     await update_radio_display(msg, None)
                     set_inhibit(1)
         elif m0 == _MSG_STATUS_RESPONSE:  # http status response
@@ -691,7 +690,6 @@ async def msg_loop(q):
                 try:
                     switch_data = json.loads(m1[1])
                     switch_connected = True
-                    #except json.decoder.JSONDecodeError as jde:
                 except Exception as jde:
                     switch_connected = False
                     logging.exception('cannot decode json', 'main:msg_loop', jde)
@@ -721,7 +719,7 @@ async def msg_loop(q):
 
             if not radio_power:
                 msg = f'{radio_name} no power'
-                # if logging.should_log(logging.DEBUG):
+                # if logging.should_log(logging.DEBUG):  # doesn't matter
                 logging.debug(msg, 'main:msg_loop')
                 await update_radio_display(msg, None)
                 set_inhibit(1)
@@ -818,13 +816,15 @@ async def main():
     time_set = False
 
     if upython:
-        if logging.should_log(logging.DEBUG):
+        if logging.loglevel != logging.DEBUG:
             _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, has_display=True)
-        msg_loop_task = asyncio.create_task(msg_loop(msgq))
-        switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
+        _msg_loop_task = asyncio.create_task(msg_loop(msgq))
+        _switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
     else:
         picow_network = None
+        _msg_loop_task = None
+        _switch_poller_task = None
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
     http_server.add_uri_callback('/', slash_callback)
@@ -838,7 +838,7 @@ async def main():
     http_server.add_uri_callback('/api/power_on_radio', api_power_on_radio_callback)
 
     logging.info(f'Starting web service on port {web_port}', 'main:main')
-    web_server = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
+    _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
 
     while keep_running:
         await asyncio.sleep(1.0)
