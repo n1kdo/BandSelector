@@ -214,7 +214,10 @@ class PicowNetwork:
             st = ''
             if self._has_display:
                 await self.set_message(f'Connecting to\n{self._ssid}')
-            self._wlan.connect(self._ssid, self._secret)
+            try:
+                self._wlan.connect(self._ssid, self._secret)
+            except OSError as ose:
+                logging.exception('got exception on wlan.connect', 'PicowNetwork:connect_to_network', ose)
             logging.info(f'...connecting to "{self._ssid}"...', 'PicowNetwork:connect_to_network')
             last_wl_status = -9
             while max_wait > 0:
