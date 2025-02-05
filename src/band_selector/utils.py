@@ -43,9 +43,15 @@ def milliseconds():
 
 
 def safe_int(value, default=-1):
+    if value is None:
+        return default
     if isinstance(value, int):
         return value
-    return int(value) if value.isdigit() else default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
 
 def num_bits_set(n: int) -> int:
     #       0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1111
