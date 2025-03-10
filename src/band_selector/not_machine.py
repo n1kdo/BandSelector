@@ -31,6 +31,9 @@ __version__ = '0.0.1'
 
 import micro_logging as logging
 
+PWRON_RESET = 1
+WDT_RESET = 3
+
 
 class Machine(object):
     """
@@ -38,8 +41,20 @@ class Machine(object):
     """
 
     @staticmethod
+    def reset_cause() -> int:
+        return PWRON_RESET
+
+    @staticmethod
     def soft_reset():
         logging.warning('Machine.soft_reset()', 'main:Machine:soft_reset()')
+
+    @staticmethod
+    def freq(f:int=None) -> int:
+        return 0 if f is None else f
+
+    @staticmethod
+    def unique_id() -> bytes:
+        return b'\x00\x00\x00\x00\x00\x00'
 
     class Pin(object):
         OUT = 1
