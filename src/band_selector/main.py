@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -31,6 +31,7 @@ __version__ = '0.1.4'
 
 import asyncio
 import json
+import sys
 import time
 
 from alcd import LCD
@@ -65,7 +66,8 @@ BANDS = ['NoBand', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M
          'NoBand']
 MASKS = [0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,
          0x0000, 0x0000]
-#               0       1       2       3       4       5       6       7        8      9      10      11     12      13        14        15
+_MIN_BAND = const(1)
+_MAX_BAND = const(13)
 
 # this list maps band indexes to the value of the 4-bit band select outputs.
 # there are 11 valid outputs, 0000 -> 1010 (0-10), the other four will return NO BAND (0)
@@ -100,6 +102,11 @@ _MSG_LCD_LINE1 = const(91)
 _MSG_BAND_CHANGE = const(100)
 _MSG_STATUS_RESPONSE = const(201)
 _MSG_ANTENNA_RESPONSE = const(202)
+
+# http api status for failures
+_API_STATUS_TIMEOUT = const(-1)
+_API_STATUS_ERROR = const(-2)
+_API_STATUS_READ_ERROR = const(-3)
 
 # set up message queue
 msgq = RingbufQueue(32)
@@ -231,60 +238,63 @@ def default_config():
     }
 
 
-async def api_response(resp, msg, msgq):
+async def api_response(resp, msg, q):
     """
     function waits for API response, enqueues message containing response
     :param resp: the HTTP response data from the API call
     :param msg: a "prototype" for the message to be returned.  a 2-tuple, (MSG_ID, payload)
-    :param msgq: the message queue on which to enqueue the message
+    :param q: the message queue on which to enqueue the message
     :return: None
     """
+    status = msg[1][0]
     try:
         payload = await resp.read()
     except Exception as ex:
         logging.exception('did not read payload', 'main:api_response', ex)
         payload = b'{"error": "api read error"}'
+        status = _API_STATUS_READ_ERROR
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
-    data = (msg[1][0], payload)  # copy the existing http status from the msg tuple
+    data = (status, payload)  # copy the existing http status from the msg tuple
     new_msg = (msg[0], data)
-    await msgq.put(new_msg)
+    await q.put(new_msg)
 
 
-async def call_api(url, msg, msgq):
+async def call_api(url, msg, q):
     if logging.should_log(logging.DEBUG):
         logging.debug(f'calling api {url}', 'main:call_api')
     t0 = milliseconds()
     try:
-        resp = await asyncio.wait_for(aiohttp.request("GET", url),2)
-        http_status = resp.status
-        if logging.should_log(logging.DEBUG):
-            dt = milliseconds() - t0
-            logging.debug(f'api call to {url} took {dt} ms', 'main:call_api')
-        msg = (msg[0], (http_status, 'no response'))
-        asyncio.create_task(api_response(resp, msg, msgq))
+        resp = await asyncio.wait_for(aiohttp.request("GET", url),0.5)
     except asyncio.TimeoutError as ex:
         dt = milliseconds() - t0
         errmsg = f'timed out on api call to {url} after {dt} ms'
         logging.warning(errmsg, 'main:call_api')
         emsg = f'{{"error": "{errmsg}"}}'.encode()
-        msg = (msg[0], (0, emsg))
-        await msgq.put(msg)
+        msg = (msg[0], (_API_STATUS_TIMEOUT, emsg))
+        await q.put(msg)
     except Exception as ex:
         dt = milliseconds() - t0
         errmsg = f'failed to execute api call to {url} after {dt} ms'
         logging.exception(errmsg, 'main:call_api', ex)
         emsg = f'{{"error": "{errmsg}"}}'.encode()
-        msg = (msg[0], (0, emsg))
-        await msgq.put(msg)
+        msg = (msg[0], (_API_STATUS_ERROR, emsg))
+        await q.put(msg)
+    else:
+        http_status = resp.status
+        if logging.should_log(logging.INFO):
+            dt = milliseconds() - t0
+            logging.info(f'api call to {url} returned {http_status} after {dt} ms', 'main:call_api')
+        msg = (msg[0], (http_status, 'no response'))
+        asyncio.create_task(api_response(resp, msg, q))
 
 
-async def call_select_antenna_api(switch_host, new_antenna, msg, msgq):
+async def call_select_antenna_api(switch_host, new_antenna, msg, q):
     radio_number = config.get('radio_number')
     #if logging.should_log(logging.DEBUG):
     logging.info(f'requesting antenna {new_antenna}', 'main:call_select_antenna_api')
     url = f'http://{switch_host}/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
-    asyncio.create_task(call_api(url, msg, msgq))
+    asyncio.create_task(call_api(url, msg, q))
 
 
 # noinspection PyUnusedLocal
@@ -300,7 +310,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
     if verb == 'GET':
         response = read_config()
         # response.pop('secret')  # do not return the secret
-        response['secret'] = 'REDACTED'  # do not return the actual secret
+        response['secret'] = ''  # do not return the actual secret
         http_status = HTTP_STATUS_OK
         bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == 'POST':
@@ -478,6 +488,9 @@ async def power_on():
 
 async def new_band(new_band_number):
     global band_antennae, current_antenna_list_index
+    if new_band_number == 0:
+        logging.warning('new band with invalid band number')
+        return
     logging.info(f'new band: {BANDS[new_band_number]}', 'main:new_band')
     await update_radio_display(f'{radio_name} {BANDS[new_band_number]}', None)
     set_inhibit(1)
@@ -485,7 +498,7 @@ async def new_band(new_band_number):
     if len(band_antennae) == 0:
         current_antenna_list_index = -1
         logging.warning(f'no antenna available for band {BANDS[new_band_number]}', 'main:new_band')
-        #                              '12345678901234567890'
+        #                                           '12345678901234567890'
         await update_radio_display(None, '*No Antenna for Band')
     else:
         logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
@@ -693,23 +706,27 @@ async def msg_loop(q):
                 except Exception as jde:
                     switch_connected = False
                     logging.exception('cannot decode json', 'main:msg_loop', jde)
-                    switch_data = {}
-                antenna_names = switch_data.get('antenna_names', ['', '', '', '', '', '', '', ''])
-                antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
-                radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
-                radio_number = int(config.get('radio_number', -1))
-                radio_name = radio_names[radio_number - 1]
-                current_antenna = -1
-                if radio_number == 1:
-                    current_antenna = switch_data.get('radio_1_antenna', -1)
-                elif radio_number == 2:
-                    current_antenna = switch_data.get('radio_2_antenna', -1)
-                if current_antenna == 0:
-                    current_antenna_name = "Antenna DISCONNECTED"
-                elif 1 <= current_antenna <= 8:
-                    current_antenna_name = antenna_names[current_antenna - 1]
+                    current_antenna = 'json decode problem'
                 else:
-                    current_antenna_name = f'unknown antenna {current_antenna}'
+                    antenna_names = switch_data.get('antenna_names', ['', '', '', '', '', '', '', ''])
+                    antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
+                    radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
+                    radio_number = int(config.get('radio_number', -1))
+                    if radio_number == 1 or radio_number == 2:
+                        radio_name = radio_names[radio_number - 1]
+                    else:
+                        radio_name = f'unknown radio {radio_number}'
+                    current_antenna = -1
+                    if radio_number == 1:
+                        current_antenna = switch_data.get('radio_1_antenna', -1)
+                    elif radio_number == 2:
+                        current_antenna = switch_data.get('radio_2_antenna', -1)
+                    if current_antenna == 0:
+                        current_antenna_name = "Antenna DISCONNECTED"
+                    elif 1 <= current_antenna <= 8:
+                        current_antenna_name = antenna_names[current_antenna - 1]
+                    else:
+                        current_antenna_name = f'unknown antenna {current_antenna}'
             else:
                 logging.warning(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
                 switch_connected = False
@@ -787,10 +804,10 @@ async def net_msg_func(message: str, msg_status=0) -> None:
 
 
 async def poll_switch(delay):
+    switch_host = config.get('switch_ip', 'localhost')
+    status_url = f'http://{switch_host}/api/status'
     while True:
         if network_connected:
-            switch_host = config.get('switch_ip', 'localhost')
-            status_url = f'http://{switch_host}/api/status'
             asyncio.create_task(call_api(status_url, (_MSG_STATUS_RESPONSE, None), msgq))
         await asyncio.sleep(delay)
 
@@ -816,8 +833,8 @@ async def main():
     time_set = False
 
     if upython:
-        if logging.loglevel != logging.DEBUG:
-            _ = Watchdog()
+        #if logging.loglevel != logging.DEBUG:
+        #    _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, has_display=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
         _switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
@@ -856,6 +873,9 @@ if __name__ == '__main__':
     reset_cause = machine.reset_cause()
     logging.loglevel = logging.INFO
     logging.info(f'starting, reset_cause={reset_cause}', 'main:__main__')
+    logging.info(f'BandSelector version {__version__} running on {sys.implementation[2]}', 'main:__main__')
+    machine.freq(200000000)  # overclock to 200 Mhz, is now supported
+    logging.info(f'clock set to {machine.freq()} hz')
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
