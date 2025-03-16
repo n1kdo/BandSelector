@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.5'
+__version__ = '0.1.6'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -166,8 +166,12 @@ antenna_names = []
 antenna_bands = []
 band_antennae = []  # list of antennas that could work on the current band.
 network_connected = False
+radio_number = 0
 radio_power = False
 switch_connected = False
+switch_host = None
+switch_poll_delay = 30
+switch_timeouts = 0
 
 # well-loved status messages
 radio_status = ['', '']
@@ -289,13 +293,19 @@ async def call_api(url, msg, q):
         asyncio.create_task(api_response(resp, msg, q))
 
 
-async def call_select_antenna_api(switch_host, new_antenna, msg, q):
-    radio_number = config.get('radio_number')
-    #if logging.should_log(logging.DEBUG):
-    logging.info(f'requesting antenna {new_antenna}', 'main:call_select_antenna_api')
+async def call_select_antenna_api(new_antenna, msg, q):
+    if logging.should_log(logging.INFO):
+        logging.info(f'requesting antenna {new_antenna}', 'main:call_select_antenna_api')
     url = f'http://{switch_host}/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
     asyncio.create_task(call_api(url, msg, q))
 
+
+async def call_status_api(param_radio_number, msg, q):
+    if param_radio_number == 1 or param_radio_number == 2:
+        url = f'http://{switch_host}/api/status?radio={param_radio_number}'
+    else:
+        url = f'http://{switch_host}/api/status'
+    asyncio.create_task(call_api(url, msg, q))
 
 # noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
@@ -306,7 +316,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 
 # noinspection PyUnusedLocal
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
-    global config
+    global config, switch_host, switch_poll_delay, radio_number
     if verb == 'GET':
         response = read_config()
         # response.pop('secret')  # do not return the secret
@@ -389,19 +399,22 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             dirty = True
         switch_ip = args.get('switch_ip')
         if switch_ip is not None:
+            switch_host = switch_ip
             config['switch_ip'] = switch_ip
             dirty = True
-        radio_number = args.get('radio_number')
-        if radio_number is not None:
-            radio_number = safe_int(radio_number, -1)
-            if 1 <= radio_number <= 2:
-                config['radio_number'] = radio_number
+        cfg_radio_number = args.get('radio_number')
+        if cfg_radio_number is not None:
+            cfg_radio_number = safe_int(cfg_radio_number, -1)
+            if 1 <= cfg_radio_number <= 2:
+                radio_number = cfg_radio_number
+                config['radio_number'] = cfg_radio_number
                 dirty = True
             else:
                 errors = True
         poll_delay = safe_int(args.get('poll_delay'), -1)
         if poll_delay > 0:
             if 0 <= poll_delay < 60:
+                switch_poll_delay = poll_delay
                 config['poll_delay'] = poll_delay
                 dirty = True
             else:
@@ -502,10 +515,9 @@ async def new_band(new_band_number):
         await update_radio_display(None, '*No Antenna for Band')
     else:
         logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
-        await update_radio_display(None, '')
+        await update_radio_display(None, 'Requesting Antenna')
         current_antenna_list_index = 0
-        switch_host = config.get('switch_ip', 'localhost')
-        await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+        await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
 
 
 async def change_band_antenna(up=True):
@@ -521,8 +533,7 @@ async def change_band_antenna(up=True):
         current_antenna_list_index -= 1
         if current_antenna_list_index < 0:
             current_antenna_list_index = len(band_antennae) -1
-    switch_host = config.get('switch_ip', 'localhost')
-    await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+    await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
 
 
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
@@ -575,10 +586,7 @@ async def msg_loop(q):
     global antenna_bands, antenna_names, band_antennae, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
         menu_state, network_connected, radio_name, radio_power,  \
-        switch_connected
-
-    switch_host = config.get('switch_ip', 'localhost')
-    status_url = f'http://{switch_host}/api/status'
+        switch_connected, switch_timeouts
 
     menu_number = 0
     item_number = 0
@@ -668,7 +676,7 @@ async def msg_loop(q):
             if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop')
                 network_connected = True
-                asyncio.create_task(call_api(status_url, (_MSG_STATUS_RESPONSE, None), msgq))
+                await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
             else:
                 logging.info('Network is DOWN!', 'main:msg_loop')
                 network_connected = False
@@ -701,41 +709,62 @@ async def msg_loop(q):
             http_status = m1[0]
             if http_status == HTTP_STATUS_OK:
                 try:
-                    switch_data = json.loads(m1[1])
-                    switch_connected = True
+                    status_dict = json.loads(m1[1])
                 except Exception as jde:
                     switch_connected = False
                     logging.exception('cannot decode json', 'main:msg_loop', jde)
                     current_antenna = 'json decode problem'
                 else:
-                    antenna_names = switch_data.get('antenna_names', ['', '', '', '', '', '', '', ''])
-                    antenna_bands = switch_data.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
-                    radio_names = switch_data.get('radio_names', ['unknown radio', 'unknown radio'])
-                    radio_number = int(config.get('radio_number', -1))
-                    if radio_number == 1 or radio_number == 2:
-                        radio_name = radio_names[radio_number - 1]
+                    switch_timeouts = 0
+                    switch_connected = True
+                    status_radio_number = status_dict.get('radio_number', -1)
+                    if status_radio_number == radio_number:
+                        current_antenna = status_dict.get('antenna_index', -1)
+                        current_antenna_name = status_dict.get('antenna_name', 'unknown antenna')
+                        radio_name = status_dict.get('radio_name', 'unknown radio')
+                    elif status_radio_number == -1:
+                        antenna_names = status_dict.get('antenna_names', ['', '', '', '', '', '', '', ''])
+                        antenna_bands = status_dict.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
+                        radio_names = status_dict.get('radio_names', ['unknown radio', 'unknown radio'])
+                        if radio_number == 1 or radio_number == 2:
+                            radio_name = radio_names[radio_number - 1]
+                        else:
+                            radio_name = f'unknown radio {radio_number}'
+                        current_antenna = -1
+                        if radio_number == 1:
+                            current_antenna = status_dict.get('radio_1_antenna', -1)
+                        elif radio_number == 2:
+                            current_antenna = status_dict.get('radio_2_antenna', -1)
+                        if current_antenna == 0:
+                            current_antenna_name = "Antenna DISCONNECTED"
+                        elif 1 <= current_antenna <= 8:
+                            current_antenna_name = antenna_names[current_antenna - 1]
+                        else:
+                            current_antenna_name = f'unknown antenna {current_antenna}'
                     else:
-                        radio_name = f'unknown radio {radio_number}'
+                        logging.warning(f'weird status_radio_number {status_radio_number}',
+                                        'main:msg_loop:_MSG_STATUS_RESPONSE')
+            elif http_status == _API_STATUS_TIMEOUT:
+                switch_timeouts += 1
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:MSG_STATUS_RESPONSE')
+
+                if switch_timeouts == 2:
+                    switch_connected = False
                     current_antenna = -1
-                    if radio_number == 1:
-                        current_antenna = switch_data.get('radio_1_antenna', -1)
-                    elif radio_number == 2:
-                        current_antenna = switch_data.get('radio_2_antenna', -1)
-                    if current_antenna == 0:
-                        current_antenna_name = "Antenna DISCONNECTED"
-                    elif 1 <= current_antenna <= 8:
-                        current_antenna_name = antenna_names[current_antenna - 1]
-                    else:
-                        current_antenna_name = f'unknown antenna {current_antenna}'
+                    current_antenna_name = 'No Antenna Switch!'
+                # TODO try the status read again?
+                if False:
+                    if switch_poll_delay > 2 and network_connected:
+                        await asyncio.sleep(1)
+                        await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
             else:
                 logging.warning(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
-                switch_connected = False
-                current_antenna = -1
-                current_antenna_name = 'no antenna switch!'
+
             await update_radio_display(None, current_antenna_name)
 
             if not radio_power:
-                msg = f'{radio_name} no power'
+                msg = f'{radio_name} No Power'
                 # if logging.should_log(logging.DEBUG):  # doesn't matter
                 logging.debug(msg, 'main:msg_loop')
                 await update_radio_display(msg, None)
@@ -744,18 +773,19 @@ async def msg_loop(q):
                 if current_band_number <1 or current_band_number > 13:
                     # this does not look like a valid band choice, read the band data again.
                     band_detector.invalidate()
-                msg = f'{radio_name} {BANDS[current_band_number]}'
-                await update_radio_display(msg, None)
-                if current_antenna < 1:
-                    set_inhibit(1)
                 else:
-                    if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
-                        set_inhibit(0)
-                        await update_radio_display(None, current_antenna_name)
-                    else:
+                    msg = f'{radio_name} {BANDS[current_band_number]}'
+                    await update_radio_display(msg, None)
+                    if current_antenna < 1:
                         set_inhibit(1)
-                        # try to get the right band...
-                        await new_band(current_band_number)
+                    else:
+                        if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
+                            set_inhibit(0)
+                            await update_radio_display(None, current_antenna_name)
+                        else:
+                            set_inhibit(1)
+                            # try to get the right band...
+                            await new_band(current_band_number)
         elif m0 == _MSG_ANTENNA_RESPONSE:  # http select antenna response
             # print(f'm1={m1}')  # FIXME
             http_status = m1[0]
@@ -763,10 +793,11 @@ async def msg_loop(q):
             if http_status == 0: # api call failed
                 switch_connected = False
                 current_antenna = -1
-                current_antenna_name = 'no antenna switch!'
+                current_antenna_name = '_No Antenna Switch!_'
+                #                      '12345678901234567890'
                 await update_radio_display(None, current_antenna_name)
             elif http_status == HTTP_STATUS_OK:
-                asyncio.create_task(call_api(status_url, (_MSG_STATUS_RESPONSE, None), msgq))
+                await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
@@ -778,7 +809,7 @@ async def msg_loop(q):
                     await update_radio_display(None, '')
                     if current_antenna_list_index < len(band_antennae) - 1:
                         current_antenna_list_index = current_antenna_list_index + 1
-                    await call_select_antenna_api(switch_host, band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+                    await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
         else:
@@ -803,17 +834,16 @@ async def net_msg_func(message: str, msg_status=0) -> None:
         await msgq.put((_MSG_NETWORK_UPDOWN, 1))
 
 
-async def poll_switch(delay):
-    switch_host = config.get('switch_ip', 'localhost')
-    status_url = f'http://{switch_host}/api/status'
+async def poll_switch():
     while True:
         if network_connected:
-            asyncio.create_task(call_api(status_url, (_MSG_STATUS_RESPONSE, None), msgq))
-        await asyncio.sleep(delay)
+            await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
+        if switch_poll_delay > 0:
+            await asyncio.sleep(switch_poll_delay)
 
 
 async def main():
-    global keep_running, config, restart
+    global keep_running, config, restart, radio_number, switch_host, switch_poll_delay
     config = read_config()
     if len(config) == 0:
         # create default configuration
@@ -824,11 +854,13 @@ async def main():
     if config_level:
         logging.set_level(config_level)
 
+    radio_number = config.get('radio_number', -1)
+    switch_host = config.get('switch_ip', 'localhost')
+    switch_poll_delay = safe_int(config.get('poll_delay') or 10, 10)
+
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
-
-    poll_delay = safe_int(config.get('poll_delay') or 10, 10)
 
     time_set = False
 
@@ -837,7 +869,7 @@ async def main():
         #    _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, has_display=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
-        _switch_poller_task = asyncio.create_task(poll_switch(poll_delay))
+        _switch_poller_task = asyncio.create_task(poll_switch())
     else:
         picow_network = None
         _msg_loop_task = None
