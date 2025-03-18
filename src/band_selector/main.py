@@ -97,6 +97,7 @@ _MSG_BTN_4 = const(4)
 _MSG_POWER_SENSE = const(10)
 _MSG_NETWORK_CHANGE = const(20)
 _MSG_NETWORK_UPDOWN = const(50)
+_MSG_CONFIG_CHANGE = const(60)
 _MSG_LCD_LINE0 = const(90)
 _MSG_LCD_LINE1 = const(91)
 _MSG_BAND_CHANGE = const(100)
@@ -425,6 +426,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
             bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            await msgq.put((_MSG_CONFIG_CHANGE, 0))
         else:
             response = b'parameter out of range\r\n'
             logging.error(f'problems {problems}', 'main:api_config_callback')
@@ -680,6 +682,8 @@ async def msg_loop(q):
             else:
                 logging.info('Network is DOWN!', 'main:msg_loop')
                 network_connected = False
+        elif m0 == _MSG_CONFIG_CHANGE:
+            await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             # await asyncio.sleep_ms(50)
@@ -837,7 +841,7 @@ async def net_msg_func(message: str, msg_status=0) -> None:
 async def poll_switch():
     while True:
         if network_connected:
-            await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
+            await call_status_api(radio_number, (_MSG_STATUS_RESPONSE, None), msgq)
         if switch_poll_delay > 0:
             await asyncio.sleep(switch_poll_delay)
 
