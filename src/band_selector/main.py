@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -30,6 +30,7 @@ __version__ = '0.1.6'
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import asyncio
+import gc
 import json
 import sys
 import time
@@ -268,6 +269,7 @@ async def api_response(resp, msg, q):
 async def call_api(url, msg, q):
     if logging.should_log(logging.DEBUG):
         logging.debug(f'calling api {url}', 'main:call_api')
+    gc.collect()
     t0 = milliseconds()
     try:
         resp = await asyncio.wait_for(aiohttp.request("GET", url),0.5)
@@ -311,7 +313,7 @@ async def call_status_api(param_radio_number, msg, q):
 # noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
-    bytes_sent = http.send_simple_response(writer, http_status, None, None, ['Location: /status.html'])
+    bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /status.html'])
     return bytes_sent, http_status
 
 
@@ -323,7 +325,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         # response.pop('secret')  # do not return the secret
         response['secret'] = ''  # do not return the actual secret
         http_status = HTTP_STATUS_OK
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == 'POST':
         config = read_config()
         dirty = False
@@ -425,17 +427,17 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 save_config(config)
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
-            bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
             await msgq.put((_MSG_CONFIG_CHANGE, 0))
         else:
             response = b'parameter out of range\r\n'
             logging.error(f'problems {problems}', 'main:api_config_callback')
             http_status = HTTP_STATUS_BAD_REQUEST
-            bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+            bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         response = b'GET or PUT only.'
         http_status = HTTP_STATUS_BAD_REQUEST
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -446,11 +448,11 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
         keep_running = False
         response = b'ok\r\n'
         http_status = HTTP_STATUS_OK
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
         http_status = HTTP_STATUS_BAD_REQUEST
         response = b'not permitted except on PICO-W'
-        bytes_sent = http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
+        bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -460,7 +462,7 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
                 'switch_connected': switch_connected,
                 }
     http_status = HTTP_STATUS_OK
-    bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
 
@@ -472,7 +474,7 @@ async def api_power_on_radio_callback(http, verb, args, reader, writer, request_
                 'switch_connected': switch_connected,
                 }
     http_status = HTTP_STATUS_OK
-    bytes_sent = http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
 

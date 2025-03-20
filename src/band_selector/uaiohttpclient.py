@@ -5,12 +5,14 @@ class ClientResponse:
     def __init__(self, reader, writer):
         self.reader = reader
         self.writer = writer
+        self.headers = []
+        self.status = 0
 
     async def read(self, sz=-1):
         data = await self.reader.read(sz)
-        self.writer.close()
+        # self.writer.close()  # does nothing
         await self.writer.wait_closed()
-        self.reader.close()
+        # self.reader.close()  # does nothing
         await self.reader.wait_closed()
         return data
 
@@ -20,8 +22,7 @@ class ClientResponse:
 
 class ChunkedClientResponse(ClientResponse):
     def __init__(self, reader, writer):
-        self.reader = reader
-        self.writer = writer
+        super().__init__(reader, writer)
         self.chunk_size = 0
 
     async def read(self, sz=4 * 1024 * 1024):
@@ -35,9 +36,9 @@ class ChunkedClientResponse(ClientResponse):
                 # End of message
                 sep = await self.reader.read(2)
                 assert sep == b"\r\n"
-                self.writer.close()
+                # self.writer.close()  # does nothing in micropython
                 await self.writer.wait_closed()
-                self.reader.close()
+                # self.reader.close()
                 await self.reader.wait_closed()
                 return b""
         data = await self.reader.read(min(sz, self.chunk_size))
@@ -45,9 +46,10 @@ class ChunkedClientResponse(ClientResponse):
         if self.chunk_size == 0:
             sep = await self.reader.read(2)
             assert sep == b"\r\n"
-        self.writer.close()
+        # self.writer.close()  # does nothing!
+        # see https://github.com/micropython/micropython/blob/master/extmod/asyncio/stream.py#L16
         await self.writer.wait_closed()
-        self.reader.close()
+        # self.reader.close()  # does nothing
         await self.reader.wait_closed()
         return data
 
@@ -80,16 +82,22 @@ async def request_raw(method, url):
         path,
         host,
     )
-    await writer.awrite(query.encode("latin-1"))
+    # awrite is supported but apparently undocumented in micropython asyncio
+    # can use write and then drain -- does the same thing effectively
+    writer.write(query.encode("latin-1"))
     await writer.drain()
     return reader, writer
 
 
 async def request(method, url):
     redir_cnt = 0
+    chunked = False
+    status = 0
+    headers = []
     while redir_cnt < 2:
         reader, writer = await request_raw(method, url)
         headers = []
+        # readline is a co-routine in micropython, safe to ignore warning.
         sline = await reader.readline()
         sline = sline.split(None, 2)
         status = int(sline[1])
@@ -107,8 +115,9 @@ async def request(method, url):
 
         if 301 <= status <= 303:
             redir_cnt += 1
-            await reader.aclose()
-            await writer.aclose()
+            # aclose() is aliased to wait_closed()
+            await reader.wait_closed()
+            await writer.wait_closed()
             continue
         break
 
