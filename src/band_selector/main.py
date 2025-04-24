@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.7'
+__version__ = '0.1.8'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -45,7 +45,10 @@ from http_server import (HttpServer,
                          api_upload_file_callback,
                          api_get_files_callback,
                          HTTP_STATUS_OK,
-                         HTTP_STATUS_BAD_REQUEST)
+                         HTTP_STATUS_BAD_REQUEST,
+                         HTTP_VERB_GET,
+                         HTTP_VERB_POST)
+
 import micro_logging as logging
 from ntp import get_ntp_time
 from ringbuf_queue import RingbufQueue
@@ -273,14 +276,14 @@ async def call_api(url, msg, q):
     t0 = milliseconds()
     try:
         resp = await asyncio.wait_for(aiohttp.request("GET", url),0.5)
-    except asyncio.TimeoutError as ex:
+    except asyncio.TimeoutError: # as ex:
         dt = milliseconds() - t0
         errmsg = f'timed out on api call to {url} after {dt} ms'
         logging.warning(errmsg, 'main:call_api')
         emsg = f'{{"error": "{errmsg}"}}'.encode()
         msg = (msg[0], (_API_STATUS_TIMEOUT, emsg))
         await q.put(msg)
-    except Exception as ex:
+    except Exception: # as ex:
         dt = milliseconds() - t0
         errmsg = f'failed to execute api call to {url} after {dt} ms'
         logging.exception(errmsg, 'main:call_api', ex)
@@ -320,13 +323,13 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 # noinspection PyUnusedLocal
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     global config, switch_host, switch_poll_delay, radio_number
-    if verb == 'GET':
+    if verb == HTTP_VERB_GET:
         response = read_config()
         # response.pop('secret')  # do not return the secret
         response['secret'] = ''  # do not return the actual secret
         http_status = HTTP_STATUS_OK
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
-    elif verb == 'POST':
+    elif verb == HTTP_VERB_POST:
         config = read_config()
         dirty = False
         errors = False
@@ -882,15 +885,15 @@ async def main():
         _switch_poller_task = None
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
-    http_server.add_uri_callback('/', slash_callback)
-    http_server.add_uri_callback('/api/config', api_config_callback)
-    http_server.add_uri_callback('/api/get_files', api_get_files_callback)
-    http_server.add_uri_callback('/api/upload_file', api_upload_file_callback)
-    http_server.add_uri_callback('/api/remove_file', api_remove_file_callback)
-    http_server.add_uri_callback('/api/rename_file', api_rename_file_callback)
-    http_server.add_uri_callback('/api/restart', api_restart_callback)
-    http_server.add_uri_callback('/api/status', api_status_callback)
-    http_server.add_uri_callback('/api/power_on_radio', api_power_on_radio_callback)
+    http_server.add_uri_callback(b'/', slash_callback)
+    http_server.add_uri_callback(b'/api/config', api_config_callback)
+    http_server.add_uri_callback(b'/api/get_files', api_get_files_callback)
+    http_server.add_uri_callback(b'/api/upload_file', api_upload_file_callback)
+    http_server.add_uri_callback(b'/api/remove_file', api_remove_file_callback)
+    http_server.add_uri_callback(b'/api/rename_file', api_rename_file_callback)
+    http_server.add_uri_callback(b'/api/restart', api_restart_callback)
+    http_server.add_uri_callback(b'/api/status', api_status_callback)
+    http_server.add_uri_callback(b'/api/power_on_radio', api_power_on_radio_callback)
 
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
