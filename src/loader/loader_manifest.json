@@ -14,6 +14,7 @@
     "picow_network.py",
     "ringbuf_queue.py",
     "uaiohttpclient.py",
+    "uping.py",
     "utils.py",
     "watchdog.py",
     "content/favicon.ico",

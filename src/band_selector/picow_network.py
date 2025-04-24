@@ -39,6 +39,7 @@ if upython:
     import network
     # noinspection PyUnresolvedReferences
     import micro_logging as logging
+    from uping import ping
 else:
     import logging
 
@@ -113,12 +114,12 @@ class PicowNetwork:
             if self._has_display:
                 await self.set_message('Starting setup WLAN...')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
-            self._wlan = network.WLAN(network.AP_IF)
+            self._wlan = network.WLAN(network.WLAN.IF_AP)
             self._wlan.deinit()
             self._wlan.active(False)
             await sleep(1)
 
-            self._wlan = network.WLAN(network.AP_IF)
+            self._wlan = network.WLAN(network.WLAN.IF_AP)
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
             # wlan.deinit turns off the onboard LED because it is connected to the CYW43
             # turn it on again.
@@ -165,13 +166,15 @@ class PicowNetwork:
             if self._has_display:
                 await self.set_message('Connecting to WLAN...')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
-            self._wlan = network.WLAN(network.STA_IF)
+            self._wlan = network.WLAN(network.WLAN.IF_STA)
+            logging.info('Connecting to WLAN...1', 'PicowNetwork:connect_to_network')
             self._wlan.disconnect()
             self._wlan.deinit()
             self._wlan.active(False)
             await sleep(1)
             # get a new one.
-            self._wlan = network.WLAN(network.STA_IF)
+            self._wlan = network.WLAN(network.WLAN.IF_STA)
+            logging.info(f'  wlan.active()={self._wlan.active()}', 'PicowNetwork:connect_to_network (new)')
             # wlan.deinit turns off the onboard LED because it is connected to the CYW43
             # turn it on again.
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
@@ -258,7 +261,10 @@ class PicowNetwork:
         return
 
     def ifconfig(self):
-        return self._wlan.ifconfig()
+        if self._wlan is not None:
+            return self._wlan.ifconfig()
+        else:
+            return None
 
     def status(self):
         """
@@ -322,7 +328,7 @@ class PicowNetwork:
             return False
         s = None
         try:
-            router_ip = self._wlan.ifconfig()[2]
+            router_ip = self.ifconfig()[2]
             addr = socket.getaddrinfo(router_ip, 80)[0][-1]
             s = socket.socket()
             s.connect(addr)
@@ -338,6 +344,23 @@ class PicowNetwork:
             if s is not None:
                 s.close()
 
+    def can_ping_gateway(self):
+        if self._connected:
+            ifconfig = self.ifconfig()
+            if ifconfig is not None:
+                gateway_ip = ifconfig[2]
+                try:
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(f'trying ping to {gateway_ip}', 'PicowNetwork:can_ping_router')
+                    tx, rx = ping(gateway_ip, count=1, size=0)
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(f'ping of {gateway_ip} sent {tx} received {rx}', 'PicowNetwork:can_ping_router')
+                    return tx == rx
+                except Exception as exc:
+                    logging.error(f'ping failed: {exc}', 'PicowNetwork:can_ping_router')
+                    return False
+        return False
+
     async def keep_alive(self):
         self._keepalive = True
         # eliminate >1 dict lookup
@@ -345,12 +368,18 @@ class PicowNetwork:
         while self._keepalive:
             if logging.should_log(logging.DEBUG):
                 logging.debug(f'self.is_connected() = {self._connected}', 'PicowNetwork.keepalive')
+            if self._connected:
+                gateway_pingable = self.can_ping_gateway()
+                if not gateway_pingable:
+                    logging.warning('ping failed, attempting reconnect', 'PicowNetwork:keep_alive')
+                    self._connected = False
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
+
             if not self._connected:
                 logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
                 await self.connect()
-            else:
-                if logging.should_log(logging.DEBUG):
-                    logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
+                logging.info(f'tried to connect, connected = {self._connected}...', 'PicowNetwork:keep_alive')
             await sleep(10)  # check network every 10 seconds
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
