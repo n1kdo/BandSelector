@@ -283,7 +283,7 @@ async def call_api(url, msg, q):
         emsg = f'{{"error": "{errmsg}"}}'.encode()
         msg = (msg[0], (_API_STATUS_TIMEOUT, emsg))
         await q.put(msg)
-    except Exception: # as ex:
+    except Exception as ex:
         dt = milliseconds() - t0
         errmsg = f'failed to execute api call to {url} after {dt} ms'
         logging.exception(errmsg, 'main:call_api', ex)
