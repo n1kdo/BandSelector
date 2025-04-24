@@ -302,15 +302,15 @@ async def call_api(url, msg, q):
 async def call_select_antenna_api(new_antenna, msg, q):
     if logging.should_log(logging.INFO):
         logging.info(f'requesting antenna {new_antenna}', 'main:call_select_antenna_api')
-    url = f'http://{switch_host}/api/select_antenna?radio={radio_number}&antenna={new_antenna}'
+    url = b'http://%s/api/select_antenna?radio=%d&antenna=%d' % (switch_host, radio_number, new_antenna)
     asyncio.create_task(call_api(url, msg, q))
 
 
 async def call_status_api(param_radio_number, msg, q):
     if param_radio_number == 1 or param_radio_number == 2:
-        url = f'http://{switch_host}/api/status?radio={param_radio_number}'
+        url = b'http://%s/api/status?radio=%d' % (switch_host, param_radio_number)
     else:
-        url = f'http://{switch_host}/api/status'
+        url = b'http://%s/api/status' % (switch_host)
     asyncio.create_task(call_api(url, msg, q))
 
 # noinspection PyUnusedLocal
@@ -405,7 +405,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             dirty = True
         switch_ip = args.get('switch_ip')
         if switch_ip is not None:
-            switch_host = switch_ip
+            switch_host = switch_ip.encode()
             config['switch_ip'] = switch_ip
             dirty = True
         cfg_radio_number = args.get('radio_number')
@@ -864,7 +864,7 @@ async def main():
         logging.set_level(config_level)
 
     radio_number = config.get('radio_number', -1)
-    switch_host = config.get('switch_ip', 'localhost')
+    switch_host = config.get('switch_ip', 'localhost').encode()
     switch_poll_delay = safe_int(config.get('poll_delay') or 10, 10)
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
