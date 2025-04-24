@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.0'
+__version__ = '0.10.1'
 
 import argparse
 import hashlib
@@ -205,7 +205,9 @@ def load_device(port, force, manifest_filename='loader_manifest.json'):
             b = target.serial.read(1)
             sys.stdout.write(b.decode())
     except SerialException:
-        print("Error: Serial Exception, did the port go away?  Did you unplug the USB cable?")
+        print('Error: Serial Exception, did the port go away?  Did you unplug the USB cable?')
+    except KeyboardInterrupt:
+        print('Keyboard Interrupt, bye bye.')
     except Exception as e:
         print(str(e))
         print(type(e))
