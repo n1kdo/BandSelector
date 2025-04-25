@@ -100,7 +100,7 @@
         // look to see if update time is set in url search string
         let search = window.location.search;
         if (search !== "") {
-            search = search.substr(1);
+            search = search.substring(1);
             let pairs = search.split("&");
             let parts = search.split("=");
             for (const pair of pairs) {
@@ -226,7 +226,7 @@
         <a href="network.html">Network</a>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250118</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250425</div>
 </div>
 </body>
 </html>
