@@ -915,7 +915,7 @@ if __name__ == '__main__':
     logging.loglevel = logging.INFO
     logging.info(f'starting, reset_cause={reset_cause}', 'main:__main__')
     logging.info(f'BandSelector version {__version__} running on {sys.implementation[2]}', 'main:__main__')
-    machine.freq(200000000)  # overclock to 200 Mhz, is now supported
+    machine.freq(200000000)  # overclock to 200 Mhz, is now supported, stock pico 2 is 150 MHz, pico is 133 MHz.
     logging.info(f'clock set to {machine.freq()} hz')
     try:
         asyncio.run(main())

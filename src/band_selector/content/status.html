@@ -97,6 +97,24 @@
     let update_timeout = 0;
 
     function page_load() {
+        // look to see if update time is set in url search string
+        let search = window.location.search;
+        if (search !== "") {
+            search = search.substr(1);
+            let pairs = search.split("&");
+            let parts = search.split("=");
+            for (const pair of pairs) {
+                let parts = pair.split("=");
+                if (parts[0] === "update") {
+                    let i = parseInt(parts[1]);
+                    if (!isNaN(i)) {
+                        if ([0,1,5].includes(i)) { // only 0, 1, 5 supported for this page.
+                            update_secs = i;
+                        }
+                    }
+                }
+            }
+        }
         get_status();
     }
 
