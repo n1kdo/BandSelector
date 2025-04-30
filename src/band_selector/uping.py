@@ -11,7 +11,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 #
 # Copyright 2025, J. B. Otterson N1KDO.
@@ -52,6 +52,11 @@ import sys
 import time
 
 
+ICMP_ECHO_REQUEST = 8
+ICMP_ECHO_REPLY = 0
+STRUCT_FORMAT = '>BBHHhLL'
+STRUCT_SIZE = struct.calcsize(STRUCT_FORMAT)
+
 def time_us() -> int:
     """
     Get the current time in microseconds, but make it fit into an unsigned 32-bit int.
@@ -65,62 +70,56 @@ def time_us() -> int:
 
 
 def make_ping_packet_bytes(ident=0, seq=0, ts_usec=0, payload=b'') -> bytes:
-    cod = 8 # code uint8
-    typ = 0 # type uint8
-    checksum = 0  # checksum uint16
-    ident = ident & 0xffff # ident uint16
-    seq = seq & 0xffff # sequence int16
-    # first assemble the packet without checksum
-    # the size of the struct is 16 bytes. 1+1+2+2+2+4+4 = 16
-    data = struct.pack('>BBHHhLL', cod, typ, checksum, ident, seq, ts_usec, 0) + payload
-    # now calculate checksum
-    if len(data) & 0x1: # odd number of bytes
-        data += b'\0'  # pad to even number of bytes
+    pkt = bytearray(STRUCT_SIZE + len(payload))
+    mv = memoryview(pkt)
+    struct.pack_into(STRUCT_FORMAT, pkt, 0,
+                     ICMP_ECHO_REQUEST, 0, 0,
+                     ident & 0xffff, seq & 0xffff,
+                     ts_usec, 0)
+
+    if payload:
+        mv[STRUCT_SIZE:] = payload
+
     checksum = 0
-    for pos in range(0, len(data), 2):
-        b1 = data[pos]
-        b2 = data[pos + 1]
-        checksum += (b1 << 8) + b2
-    while checksum >= 0x10000:
-        checksum = (checksum & 0xffff) + (checksum >> 16)
-    checksum = ~checksum & 0xffff
-    # now create the actual packet with the checksum
-    data = struct.pack('>BBHHhLL', cod, typ, checksum, ident, seq, ts_usec, 0) + payload
-    return data
+    for i in range(0, len(pkt), 2):
+        if i + 1 < len(pkt):
+            checksum += (pkt[i] << 8) + pkt[i + 1]
+        else:
+            checksum += pkt[i] << 8
+
+    #while checksum >> 16:
+    #    checksum = (checksum & 0xffff) + (checksum >> 16)
+    #checksum = ~checksum & 0xffff
+    checksum = (~((checksum & 0xffff) + (checksum >> 16))) & 0xffff
+
+    # Insert checksum into packet
+    struct.pack_into('>H', pkt, 2, checksum)
+    return pkt
 
 
 def decode_ping_response(data) -> tuple[int, int, int, int, int, int, bytes]:
-    if len(data) < 16:
-        raise ValueError('ICMP Echo packet must be at least 16 bytes')
+    if len(data) < STRUCT_SIZE:
+        raise ValueError('ICMP Echo packet is too short')
 
-    # 20 bytes of padding, then uint8, uint8, uint16, uint16, int16, uint32
-    stuff = struct.unpack('>xxxxxxxxxxxxxxxxxxxxBBHHhL', data[0:32])
-    typ = stuff[0]
-    if typ not in (0, 8):
-        raise ValueError('Not a ICMP Echo message (type={type})'.format(type=typ))
-    code = stuff[1]
-    checksum = stuff[2]
-    ident = stuff[3]
-    seq = stuff[4]
-    ts = stuff[5]
-    payload = data[32:]
-    # print(f'type: {typ}, code: {code}, checksum: {checksum}, ident: {ident:x}, seq: {seq}, ts: {ts}')
-    return typ, code, checksum, ident, seq, ts, payload
+    typ, code, checksum, ident, seq, ts, _ = struct.unpack_from(STRUCT_FORMAT, data, 20)
+    if typ not in (ICMP_ECHO_REQUEST, ICMP_ECHO_REPLY):
+        raise ValueError(f'Not a ICMP Echo message (type={typ})')
+    return typ, code, checksum, ident, seq, ts, data[32:]
 
 
 def ping(host, count=4, timeout=5000, interval=10, size=16) -> tuple[int, int]:
-    assert size >= 0, "pkt size too small"
+    assert size >= 0, "packet size too small"
     payload = b'Q' * size
 
     # init socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, 1)
-    sock.setblocking(0)
+    sock.setblocking(False)
     sock.settimeout(timeout/1000)
     addr = socket.getaddrinfo(host, 1)[0][-1][0] # ip address
     sock.connect((addr, 1))
     logging.debug(f'PING {host} ({addr}): {len(payload)} data bytes')
 
-    seqs = list(range(1, count+1)) # [1,2,...,count]
+    pending = set(range(1, count + 1))
     ident = random.getrandbits(16)
     seq = 1
     t = 0
@@ -129,33 +128,32 @@ def ping(host, count=4, timeout=5000, interval=10, size=16) -> tuple[int, int]:
     finish = False
     while t < timeout:
         if t==interval and seq<=count:
-            ts_usec = time_us()
-            byts = make_ping_packet_bytes(ident, seq, ts_usec, payload)
+            byts = make_ping_packet_bytes(ident, seq, time_us(), payload)
             if sock.send(byts) == len(byts):
                 n_trans += 1
                 t = 0 # reset timeout
             else:
-                seqs.remove(seq)
+                pending.discard(seq)
             seq += 1
         # recv packet
         while 1:
-            socks, _, _ = select.select([sock], [], [], 0)
-            if socks:
-                resp = socks[0].recv(4096)
+            readables, _, _ = select.select([sock], [], [], 0)
+            if readables:
+                resp = sock.recv(4096)
                 r_typ, cod, cksum, r_ident, r_seq, ts, r_payload = decode_ping_response(resp)
-                if r_typ==0 and r_ident==ident and (r_seq in seqs): # 0: ICMP_ECHO_REPLY
+                if r_typ==0 and r_ident==ident and (r_seq in pending): # 0: ICMP_ECHO_REPLY
                     t_elapsed = (time_us() - ts) / 1000.0
                     ttl = 0
                     n_recv += 1
                     if logging.should_log(logging.DEBUG):
                         logging.debug(f'{len(resp)} bytes from {addr}: icmp_seq={r_seq}, ttl={ttl}, time={t_elapsed} ms')
-                    seqs.remove(r_seq)
-                    if len(seqs) == 0:
+                    pending.discard(r_seq)
+                    if len(pending) == 0:
                         finish = True
                         break
                 else:
-                    if r_seq not in seqs:
-                        logging.warning(f'{r_seq} not in {seqs}')
+                    if r_seq not in pending:
+                        logging.warning(f'{r_seq} not in {pending}')
             else:
                 break
         if finish:

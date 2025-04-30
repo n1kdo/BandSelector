@@ -1,3 +1,40 @@
+#
+# this is a bastardized version of the uaiohttpclient from
+# https://github.com/micropython/micropython-lib/tree/master/micropython/uaiohttpclient
+#
+# The original code was licensed under the MIT license, so this code remains so.
+#
+# some of the modifications are:
+#  * converted strings to bytes
+#  * added type hints
+#  * make sure that the socket is closed
+#
+__author__ = 'J. B. Otterson'
+__copyright__ = """
+The MIT License (MIT)
+
+Copyright (c) 2013, 2014 micropython-lib contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+__version__ = '0.1.1'
+
 import asyncio
 
 class ClientResponse:
@@ -16,7 +53,7 @@ class ClientResponse:
         return data
 
     def __repr__(self) -> str:
-        return '<ClientResponse %d %s>' % (self.status, self.headers)
+        return f'<ClientResponse {self.status} {self.headers}'
 
 
 class ChunkedClientResponse(ClientResponse):
@@ -53,15 +90,15 @@ class ChunkedClientResponse(ClientResponse):
         return data
 
     def __repr__(self) -> str:
-        return '<ChunkedClientResponse %d %s>' % (self.status, self.headers)
+        return f'<ChunkedClientResponse {self.status} {self.headers}>'
 
 
 async def request_raw(method:bytes, url:bytes) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     try:
-        proto, dummy, host, path = url.split(b'/', 3)
+        proto, _, host, path = url.split(b'/', 3)
     except ValueError:
-        proto, dummy, host = url.split(b'/', 2)
-        path = ''
+        proto, _, host = url.split(b'/', 2)
+        path = b''
 
     if b':' in host:
         host, port = host.split(b':')
@@ -71,19 +108,13 @@ async def request_raw(method:bytes, url:bytes) -> tuple[asyncio.StreamReader, as
 
     if proto != b'http:':
         raise ValueError(f'Unsupported protocol: {proto}')
+
     reader, writer = await asyncio.open_connection(host, port)
     # Use protocol 1.0, because 1.1 always allows to use chunked
     # transfer-encoding But explicitly set Connection: close, even
     # though this should be default for 1.0, because some servers
     # misbehave w/o it.
-    query = b'%s /%s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\nUser-Agent: compat\r\n\r\n' % (
-        method,
-        path,
-        host,
-    )
-    # awrite is supported but apparently undocumented in micropython asyncio
-    # can use write and then drain -- does the same thing effectively
-    writer.write(query)
+    writer.write(b'%s /%s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\nUser-Agent: compat\r\n\r\n' % (method, path, host))
     await writer.drain()
     return reader, writer
 
@@ -95,7 +126,7 @@ async def request(method:bytes, url:bytes):
     headers = []
     while redir_cnt < 2:
         reader, writer = await request_raw(method, url)
-        headers = []
+        headers.clear()
         # readline is a co-routine in micropython, safe to ignore warning.
         sline = await reader.readline()
         sline = sline.split(None, 2)
@@ -106,9 +137,8 @@ async def request(method:bytes, url:bytes):
             if not line or line == b'\r\n':
                 break
             headers.append(line)
-            if line.startswith(b'Transfer-Encoding:'):
-                if b'chunked' in line:
-                    chunked = True
+            if line.startswith(b'Transfer-Encoding:') and b'chunked' in line:
+                chunked = True
             elif line.startswith(b'Location:'):
                 url = line.rstrip().split(None, 1)[1].decode('latin-1')
 
