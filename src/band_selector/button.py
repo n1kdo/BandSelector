@@ -1,5 +1,9 @@
+__author__ = 'J. B. Otterson'
+__copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
+__version__ = '0.1.1'
+
 #
-# Copyright 2024, J. B. Otterson N1KDO.
+# Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
@@ -21,12 +25,13 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import asyncio
+from asyncio import (create_task, sleep_ms)
 from machine import Pin
 
 class Button:
-    debounce_ms = 50
-    long_press_count = 10
+    __slots__ = ('_pin', '_queue', '_short_msg', '_long_msg', '_last', '_timer')
+    _debounce_ms = 50
+    _long_press_count = 10
 
     def __init__(self, pin, queue, short_press_message, long_press_message):
         if isinstance(pin, int):
@@ -37,7 +42,7 @@ class Button:
         self._long_msg = long_press_message
         self._last = self._pin.value()  # or 1
         self._timer = 0
-        asyncio.create_task(self._edge_checker())
+        create_task(self._edge_checker())
 
     async def _edge_checker(self):
         while True:
@@ -45,13 +50,13 @@ class Button:
             if latest != self._last:  # is it different than the last time?
                 # yeah, do something
                 if latest == 1:  # button was released
-                    await self._queue.put(self._long_msg if self._timer >= Button.long_press_count else self._short_msg)
+                    await self._queue.put(self._long_msg if self._timer >= Button._long_press_count else self._short_msg)
                  # and reset
                 self._last = latest
                 self._timer = 0
             else:  # it is the same value as last time.
                 self._timer += 1
-            await asyncio.sleep_ms(Button.debounce_ms)
+            await sleep_ms(self._debounce_ms)
 
     def invalidate(self):
         self._last = None

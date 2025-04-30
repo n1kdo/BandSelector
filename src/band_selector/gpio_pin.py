@@ -1,5 +1,9 @@
+__author__ = 'J. B. Otterson'
+__copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
+__version__ = '0.1.1'
+
 #
-# Copyright 2024, J. B. Otterson N1KDO.
+# Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
@@ -21,10 +25,12 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import asyncio
+from asyncio import (create_task, sleep_ms)
 from machine import Pin
 
+
 class GPIO_Pin:
+    __slots__ = ('_pin', '_queue', '_low_msg', '_hi_msg', '_last')
     debounce_ms = 50
 
     def __init__(self, pin, queue, low_msg, hi_msg):
@@ -35,17 +41,20 @@ class GPIO_Pin:
         self._low_msg = low_msg
         self._hi_msg = hi_msg
         self._last = None # always send an event after init.
-        asyncio.create_task(self._edge_checker())
+        create_task(self._edge_checker())
 
     async def _edge_checker(self):
+        pin_value = self._pin.value  # Cache method lookup
+        queue_put = self._queue.put
+
         while True:
-            latest = self._pin.value()
+            latest = pin_value()
             if latest != self._last:  # is it different than the last time?
-                # yeah, do something
-                await self._queue.put(self._hi_msg if latest else self._low_msg)
+                # yeah, send a message
+                await queue_put(self._hi_msg if latest else self._low_msg)
                  # and reset
                 self._last = latest
-            await asyncio.sleep_ms(GPIO_Pin.debounce_ms)
+            await sleep_ms(GPIO_Pin.debounce_ms)
 
     def invalidate(self):
         self._last = None
