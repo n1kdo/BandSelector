@@ -115,8 +115,9 @@ class PicowNetwork:
                 await self.set_message('Starting setup WLAN...')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.WLAN.IF_AP)
+            self._wlan.disconnect()
             self._wlan.deinit()
-            self._wlan.active(False)
+            # self._wlan.active(False) # reported to do nothing.
             await sleep(1)
 
             self._wlan = network.WLAN(network.WLAN.IF_AP)
@@ -170,7 +171,7 @@ class PicowNetwork:
             logging.info('Connecting to WLAN...1', 'PicowNetwork:connect_to_network')
             self._wlan.disconnect()
             self._wlan.deinit()
-            self._wlan.active(False)
+            # self._wlan.active(False)  # reportedly does nothing.
             await sleep(1)
             # get a new one.
             self._wlan = network.WLAN(network.WLAN.IF_STA)
