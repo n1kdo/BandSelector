@@ -35,14 +35,24 @@ import asyncio
 from machine import WDT
 
 class Watchdog:
+    __slots__ = ('_wdt', '_period')
 
-    def __init__(self, threshold=5000, period=1000):
-        self._threshold = threshold
+    def __init__(self, threshold:int=5000, period:int=1000)->None:
+        """
+        :param threshold: watchdog timeout in milliseconds, default 5000ms
+        :param period: feed period in milliseconds, default 1000ms
+        """
+        if period >= threshold:
+            raise ValueError('period must be less than threshold')
         self._period = period
-        self._wdt = WDT(timeout=self._threshold)
+        self._wdt = WDT(timeout=threshold)
         asyncio.create_task(self._feeder())
 
     async def _feeder(self):
+        feed = self._wdt.feed
+        period = self._period  # Cache period
+        asleep = asyncio.sleep_ms  # Cache sleep function
+
         while True:
-            self._wdt.feed()
-            await asyncio.sleep_ms(self._period)
+            feed()
+            await asleep(period)
