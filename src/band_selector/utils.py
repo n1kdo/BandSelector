@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2023, J. B. Otterson N1KDO.
+Copyright 2023, 2025 J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -22,15 +22,14 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.0'
+__version__ = '0.9.1'
 
 import sys
 import time
 
 upython = sys.implementation.name == 'micropython'
 
-BITS = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 4]
-
+BITS = bytes([0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4])
 
 def get_timestamp(tt=None):
     if tt is None:
