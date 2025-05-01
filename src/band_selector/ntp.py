@@ -3,41 +3,49 @@ import struct
 import sys
 import time
 
-if sys.implementation.name == 'micropython':
-    import machine
+_IS_MICROPYTHON = sys.implementation.name == 'micropython'
 
-UNIX_EPOCH = 2208988800  # 1970-01-01 00:00:00
+if _IS_MICROPYTHON:
+    from machine import RTC
+    _rtc = RTC()
+else:
+    _rtc = None
+    def const(i):
+        return i
 
+_UNIX_EPOCH = const(2208988800)  # 1970-01-01 00:00:00
+_NTP_PORT = const(123)
+_BUF_SIZE = const(1024)
+_NTP_MSG = b'\x1b' + b'\0' * 47
+_SOCKET_TIMEOUT = const(5)
+_STRUCT_FORMAT = '!12I'
 
 def get_ntp_time(host='pool.ntp.org'):
-    port = 123
-    buf = 1024
+    sock = None
     try:
-        address = socket.getaddrinfo(host, port)[0][-1]
-        msg = b'\x1b' + 47 * b'\0'
-
+        address = socket.getaddrinfo(host, _NTP_PORT)[0][-1]
         # connect to server
-        client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client.settimeout(5)
-        client.sendto(msg, address)
-        msg, address = client.recvfrom(buf)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(_SOCKET_TIMEOUT)
+        sock.sendto(_NTP_MSG, address)
+        msg = sock.recvfrom(_BUF_SIZE)[0]
+        sock.close()
+
+        t = struct.unpack(_STRUCT_FORMAT, msg)[10] - _UNIX_EPOCH
+        tt = time.gmtime(t)
+        if _IS_MICROPYTHON:
+            # set the RTC
+            try:
+                _rtc.datetime((tt[0], tt[1], tt[2], tt[6], tt[3], tt[4], tt[5], 0))
+            except OSError as e:
+                print(e)
+        return tt
     except OSError as ose:
         print(ose)
         return None
-
-    t = struct.unpack('!12I', msg)[10]
-    # reference time (in seconds since 1900-01-01 00:00:00)
-    t -= UNIX_EPOCH
-    tt = time.gmtime(t)
-    if sys.implementation.name == 'micropython':
-        # set the RTC
-        rtc = machine.RTC()
-        ttt = (tt[0], tt[1], tt[2], tt[6], tt[3], tt[4], tt[5], 0)
-        try:
-            rtc.datetime(ttt)
-        except OSError as e:
-            print(e)
-    return tt
+    finally:
+        if sock:
+            sock.close()
 
 
 def main():
