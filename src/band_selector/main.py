@@ -155,7 +155,7 @@ CONTENT_DIR = 'content/'
 
 PORT_SETTINGS_FILE = 'data/port_settings.txt'
 
-DEFAULT_SECRET = 'band'
+DEFAULT_SECRET = 'selector'
 DEFAULT_SSID = 'selector'
 DEFAULT_WEB_PORT = 80
 
@@ -541,6 +541,7 @@ async def change_band_antenna(up=True):
         if current_antenna_list_index < 0:
             current_antenna_list_index = len(band_antennae) -1
     await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+    return True
 
 
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
