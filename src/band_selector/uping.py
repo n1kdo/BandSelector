@@ -117,7 +117,7 @@ def ping(host, count=4, timeout=5000, interval=10, size=16) -> tuple[int, int]:
     sock.settimeout(timeout/1000)
     addr = socket.getaddrinfo(host, 1)[0][-1][0] # ip address
     sock.connect((addr, 1))
-    logging.debug(f'PING {host} ({addr}): {len(payload)} data bytes')
+    logging.debug(f'PING {host} ({addr}): {len(payload)} data bytes', 'uping:ping')
 
     pending = set(range(1, count + 1))
     ident = random.getrandbits(16)
@@ -146,14 +146,15 @@ def ping(host, count=4, timeout=5000, interval=10, size=16) -> tuple[int, int]:
                     ttl = 0
                     n_recv += 1
                     if logging.should_log(logging.DEBUG):
-                        logging.debug(f'{len(resp)} bytes from {addr}: icmp_seq={r_seq}, ttl={ttl}, time={t_elapsed} ms')
+                        logging.debug(f'{len(resp)} bytes from {addr}: icmp_seq={r_seq}, ttl={ttl}, time={t_elapsed} ms',
+                                      'uping:ping')
                     pending.discard(r_seq)
                     if len(pending) == 0:
                         finish = True
                         break
                 else:
                     if r_seq not in pending:
-                        logging.warning(f'{r_seq} not in {pending}')
+                        logging.warning(f'{r_seq} not in {pending}', 'uping:ping')
             else:
                 break
         if finish:
@@ -167,7 +168,8 @@ def ping(host, count=4, timeout=5000, interval=10, size=16) -> tuple[int, int]:
 
     sock.close()
     if logging.should_log(logging.DEBUG):
-        logging.debug(f'{n_trans} packets transmitted, {n_recv} packets received.')
+        logging.debug(f'{n_trans} packets transmitted, {n_recv} packets received.',
+                      'uping:ping')
     return n_trans, n_recv
 
 
