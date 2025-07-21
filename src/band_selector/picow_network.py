@@ -5,7 +5,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.8'
+__version__ = '0.9.9'
 
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
@@ -104,7 +104,7 @@ class PicowNetwork:
         if self._message_func:
             await self._message_func(self._message, self._status)
 
-    async def connect(self):
+    async def connect(self) -> None:
         network.country('US')
         sleep = asyncio.sleep
         wl_status = 0
@@ -117,7 +117,7 @@ class PicowNetwork:
             self._wlan = network.WLAN(network.WLAN.IF_AP)
             self._wlan.disconnect()
             self._wlan.deinit()
-            # self._wlan.active(False) # reported to do nothing.
+            self._wlan.active(False)
             await sleep(1)
 
             self._wlan = network.WLAN(network.WLAN.IF_AP)
@@ -163,6 +163,7 @@ class PicowNetwork:
             logging.info(f'  wlan.active()={self._wlan.active()}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ssid={self._wlan.config("ssid")}', 'PicowNetwork:connect_to_network')
             logging.info(f'  ifconfig={self._wlan.ifconfig()}', 'PicowNetwork:connect_to_network')
+            self._connected = True
         else:
             if self._has_display:
                 await self.set_message('Connecting to WLAN...')
@@ -171,7 +172,7 @@ class PicowNetwork:
             logging.info('Connecting to WLAN...1', 'PicowNetwork:connect_to_network')
             self._wlan.disconnect()
             self._wlan.deinit()
-            # self._wlan.active(False)  # reportedly does nothing.
+            self._wlan.active(False)
             await sleep(1)
             # get a new one.
             self._wlan = network.WLAN(network.WLAN.IF_STA)
@@ -255,7 +256,7 @@ class PicowNetwork:
                 msg = f'{ssid}\n{ip_address}'
         else:
             if self._access_point_mode:
-                msg = f'AP: {ip_address} '
+                msg = f'AP {ip_address} '
             else:
                 msg = f'{ip_address} '
         await self.set_message(msg, 1)
@@ -370,12 +371,13 @@ class PicowNetwork:
             if logging.should_log(logging.DEBUG):
                 logging.debug(f'self.is_connected() = {self._connected}', 'PicowNetwork.keepalive')
             if self._connected:
-                gateway_pingable = self.can_ping_gateway()
-                if not gateway_pingable:
-                    logging.warning('ping failed, attempting reconnect', 'PicowNetwork:keep_alive')
-                    self._connected = False
-                if logging.should_log(logging.DEBUG):
-                    logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
+                if not self._access_point_mode:
+                    gateway_pingable = self.can_ping_gateway()
+                    if not gateway_pingable:
+                        logging.warning('ping failed, attempting reconnect', 'PicowNetwork:keep_alive')
+                        self._connected = False
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(f'connected = {self._connected}', 'PicowNetwork.keepalive')
 
             if not self._connected:
                 logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
