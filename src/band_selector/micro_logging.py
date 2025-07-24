@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 from utils import get_timestamp, upython
 
@@ -62,7 +62,9 @@ def should_log(level):
     return level <= loglevel
 
 
-def _log(level: str, message: str, caller=None):
+def _log(level: str, message: str|bytes, caller=None):
+    if isinstance(message, bytes):
+        message = message.decode()
     level = '[' + level + ']'
     if caller is None:
         print(f'{get_timestamp()} {level:<11s} {message}')
