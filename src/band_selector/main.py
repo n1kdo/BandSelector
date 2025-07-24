@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.8'
+__version__ = '0.1.9'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -74,7 +74,7 @@ _MIN_BAND = const(1)
 _MAX_BAND = const(13)
 
 # this list maps band indexes to the value of the 4-bit band select outputs.
-# there are 11 valid outputs, 0000 -> 1010 (0-10), the other four will return NO BAND (0)
+# there are 11 valid outputs, 0000 -> 1010 (0-10), the other five map to NO BAND (0)
 ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
                      1,  # 0001 -> 160M
                      2,  # 0010 -> 80M
@@ -260,7 +260,7 @@ async def api_response(resp, msg, q):
         payload = await resp.read()
     except Exception as ex:
         logging.exception('did not read payload', 'main:api_response', ex)
-        payload = b'{"error": "api read error"}'
+        payload = b'api read error'
         status = _API_STATUS_READ_ERROR
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
@@ -278,17 +278,15 @@ async def call_api(url, msg, q):
         resp = await asyncio.wait_for(aiohttp.request("GET", url),0.5)
     except asyncio.TimeoutError: # as ex:
         dt = milliseconds() - t0
-        errmsg = f'timed out on api call to {url} after {dt} ms'
+        errmsg = b'timed out on api call to "%s" after %d ms' % (url, dt)
         logging.warning(errmsg, 'main:call_api')
-        emsg = f'{{"error": "{errmsg}"}}'.encode()
-        msg = (msg[0], (_API_STATUS_TIMEOUT, emsg))
+        msg = (msg[0], (_API_STATUS_TIMEOUT, errmsg))
         await q.put(msg)
     except Exception as ex:
         dt = milliseconds() - t0
-        errmsg = f'failed to execute api call to {url} after {dt} ms'
+        errmsg = b'failed to execute api call to "%s" after %d ms' % (url, dt)
         logging.exception(errmsg, 'main:call_api', ex)
-        emsg = f'{{"error": "{errmsg}"}}'.encode()
-        msg = (msg[0], (_API_STATUS_ERROR, emsg))
+        msg = (msg[0], (_API_STATUS_ERROR, errmsg))
         await q.put(msg)
     else:
         http_status = resp.status
@@ -362,7 +360,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 errors = True
                 problems.append('ssid')
         secret = args.get('secret')
-        if secret is not None:
+        if secret is not None and len(secret) > 0:
             if 8 <= len(secret) < 32:
                 config['secret'] = secret
                 dirty = True
@@ -521,10 +519,14 @@ async def new_band(new_band_number):
         #                                           '12345678901234567890'
         await update_radio_display(None, '*No Antenna for Band')
     else:
-        logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
-        await update_radio_display(None, 'Requesting Antenna')
-        current_antenna_list_index = 0
-        await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+        if switch_connected:
+            logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
+            await update_radio_display(None, 'Requesting Antenna')
+            current_antenna_list_index = 0
+            await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+        else:
+            logging.warning('band changed but switch is not connected', 'main:new_band')
+            # do not need to update 'radio' display, it should already indicate that the switch is not connected.
 
 
 async def change_band_antenna(up=True):
@@ -602,10 +604,10 @@ async def msg_loop(q):
     while True:
         msg = await q.get()
         t0 = milliseconds()
-        if logging.should_log(logging.DEBUG):
-            logging.debug(f'msg received: {msg}', 'main:msg_loop')
         m0 = msg[0]
         m1 = msg[1]
+        if logging.should_log(logging.DEBUG):
+            logging.debug(f'msg received: {m0} : {m1}', 'main:msg_loop')
         if m0 == 0:
             logging.error(f'impossible message 0')
         elif m0 == _MSG_BTN_1:  # MENU button
@@ -726,6 +728,8 @@ async def msg_loop(q):
                     current_antenna = 'json decode problem'
                 else:
                     switch_timeouts = 0
+                    if not switch_connected:
+                        logging.warning('switch_connected False to True transition', 'main:msg_loop')
                     switch_connected = True
                     status_radio_number = status_dict.get('radio_number', -1)
                     if status_radio_number == radio_number:
