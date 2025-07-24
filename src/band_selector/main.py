@@ -780,7 +780,7 @@ async def msg_loop(q):
             if not radio_power:
                 msg = f'{radio_name} No Power'
                 # if logging.should_log(logging.DEBUG):  # doesn't matter
-                logging.debug(msg, 'main:msg_loop')
+                logging.debug(msg, 'main:msg_loop:NoPower')
                 await update_radio_display(msg, None)
                 set_inhibit(1)
             else:
@@ -837,8 +837,8 @@ async def msg_loop(q):
 
 async def net_msg_func(message: str, msg_status=0) -> None:
     global network_status
-    if logging.should_log(logging.DEBUG):
-        logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
+    if logging.should_log(logging.INFO):
+        logging.info(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     lines = message.split('\n')
     if len(lines) == 1:
         await update_network_display(message)
