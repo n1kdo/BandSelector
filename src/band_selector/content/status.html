@@ -167,6 +167,16 @@
                 process_get_status_response(xmlHttp.responseText);
             }
         }
+        xmlHttp.onerror = function () {
+            if (update_secs > 0) {
+                update_timeout = setTimeout(get_status, update_secs * 1000);
+            }
+        }
+        xmlHttp.ontimeout = function () {
+            if (update_secs > 0) {
+                update_timeout = setTimeout(get_status, update_secs * 1000);
+            }
+        }
         xmlHttp.open("GET", "/api/status", true);
         xmlHttp.send();
     }
@@ -226,7 +236,7 @@
         <a href="network.html">Network</a>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250425</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250725</div>
 </div>
 </body>
 </html>
