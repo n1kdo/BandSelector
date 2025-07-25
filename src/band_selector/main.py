@@ -237,7 +237,7 @@ def default_config():
         'dhcp': True,
         'hostname': 'selector1',
         'ip_address': '192.168.1.73',
-        'log_level' : 'debug',
+        'log_level': 'debug',
         'netmask': '255.255.255.0',
         'gateway': '192.168.1.1',
         'dns_server': '8.8.8.8',
@@ -273,10 +273,15 @@ async def call_api(url, msg, q):
     if logging.should_log(logging.DEBUG):
         logging.debug(f'calling api {url}', 'main:call_api')
     gc.collect()
+    if upython and logging.should_log(logging.DEBUG):
+        free = gc.mem_free()
+        alloc = gc.mem_alloc()
+        pct_free = free/(free + alloc) * 100
+        logging.debug(f'{alloc} allocated, {free} free {pct_free:6.2f}% free.', 'main:call_api')
     t0 = milliseconds()
     try:
-        resp = await asyncio.wait_for(aiohttp.request("GET", url),0.5)
-    except asyncio.TimeoutError: # as ex:
+        resp = await asyncio.wait_for(aiohttp.request("GET", url), 0.5)
+    except asyncio.TimeoutError:  # as ex:
         dt = milliseconds() - t0
         errmsg = b'timed out on api call to "%s" after %d ms' % (url, dt)
         logging.warning(errmsg, 'main:call_api')
@@ -310,6 +315,7 @@ async def call_status_api(param_radio_number, msg, q):
     else:
         url = b'http://%s/api/status' % (switch_host)
     asyncio.create_task(call_api(url, msg, q))
+
 
 # noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
@@ -458,10 +464,27 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 
 
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/status'
-    response = {'lcd_lines': [lcd[0], lcd[1]],
-                'radio_power': radio_power,
-                'switch_connected': switch_connected,
-                }
+    """
+    wants to have message looking like this:
+
+    {
+        "switch_connected": true,
+        "lcd_lines": [
+            "Elecraft K3 No Power",
+            "    6 Meter Yagi    "
+        ],
+        "radio_power": false
+    }
+
+    """
+    if False:  # this is not a noticeable improvement to using the dict.
+        response = b'{"switch_connected": %s, "lcd_lines": ["%s","%s"],"radio_power": %s}' % (
+            b'true' if switch_connected else b'false', lcd[0], lcd[1], b'true' if radio_power else b'false')
+    else:
+        response = {'lcd_lines': [lcd[0], lcd[1]],
+                    'radio_power': radio_power,
+                    'switch_connected': switch_connected,
+                    }
     http_status = HTTP_STATUS_OK
     bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
@@ -523,7 +546,8 @@ async def new_band(new_band_number):
             logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
             await update_radio_display(None, 'Requesting Antenna')
             current_antenna_list_index = 0
-            await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+            await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
+                                          (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
         else:
             logging.warning('band changed but switch is not connected', 'main:new_band')
             # do not need to update 'radio' display, it should already indicate that the switch is not connected.
@@ -541,7 +565,7 @@ async def change_band_antenna(up=True):
     else:  # down, yeah
         current_antenna_list_index -= 1
         if current_antenna_list_index < 0:
-            current_antenna_list_index = len(band_antennae) -1
+            current_antenna_list_index = len(band_antennae) - 1
     await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
     return True
 
@@ -595,7 +619,7 @@ async def show_edit_display(menu_number, item_number):
 async def msg_loop(q):
     global antenna_bands, antenna_names, band_antennae, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
-        menu_state, network_connected, radio_name, radio_power,  \
+        menu_state, network_connected, radio_name, radio_power, \
         switch_connected, switch_timeouts
 
     menu_number = 0
@@ -626,9 +650,9 @@ async def msg_loop(q):
                 elif menu_state == _MENU_MODE_STATE:  # in EDIT mode
                     menu_state = _MENU_EDIT_STATE
                     await show_edit_display(menu_number, item_number)
-                elif menu_state ==  _MENU_EDIT_STATE:  # in EDIT mode, editing
+                elif menu_state == _MENU_EDIT_STATE:  # in EDIT mode, editing
                     # this is when a change actually happened.
-                    #logging.info(f'edited data, menu={menu_number}, item selected = {item_number}')
+                    # logging.info(f'edited data, menu={menu_number}, item selected = {item_number}')
                     # this should be bound to the MENUS data, not hardcoded literals 0|1...
                     if menu_number == 0:
                         select_network_mode(item_number)
@@ -664,7 +688,7 @@ async def msg_loop(q):
                     menu_number -= 1
                     if menu_number < 0:
                         menu_number = len(MENUS) - 1
-                    await show_edit_display(menu_number,item_number)
+                    await show_edit_display(menu_number, item_number)
                 elif menu_state == _MENU_EDIT_STATE:  # in EDIT mode, editing
                     item_number -= 1
                     if item_number < 0:
@@ -677,7 +701,7 @@ async def msg_loop(q):
                 logging.info('radio power is on', 'main:msg_loop')
             else:
                 radio_power = False
-                logging.info('radio power is off','main:msg_loop')
+                logging.info('radio power is off', 'main:msg_loop')
                 await update_radio_display(f'{radio_name} No Power', None)
         elif m0 == _MSG_NETWORK_UPDOWN:
             # network up/down
@@ -710,7 +734,7 @@ async def msg_loop(q):
                     current_band_number = ELECRAFT_BAND_MAP[m1]
                     if len(antenna_names) > 0:  # only change bands if there are antennas.
                         await new_band(current_band_number)
-                    else:   # update the display with the band name
+                    else:  # update the display with the band name
                         await update_radio_display(f'{radio_name} {BANDS[current_band_number]}', None)
                 else:
                     msg = f'unknown band # {m1}'
@@ -784,7 +808,7 @@ async def msg_loop(q):
                 await update_radio_display(msg, None)
                 set_inhibit(1)
             else:
-                if current_band_number <1 or current_band_number > 13:
+                if current_band_number < 1 or current_band_number > 13:
                     # this does not look like a valid band choice, read the band data again.
                     band_detector.invalidate()
                 else:
@@ -804,7 +828,7 @@ async def msg_loop(q):
             # print(f'm1={m1}')  # FIXME
             http_status = m1[0]
             payload = m1[1].decode().strip()
-            if http_status == 0: # api call failed
+            if http_status == 0:  # api call failed
                 switch_connected = False
                 current_antenna = -1
                 current_antenna_name = '_No Antenna Switch!_'
@@ -819,11 +843,13 @@ async def msg_loop(q):
                     set_inhibit(1)
                 else:
                     # if there is another antenna candidate, try to get it
-                    logging.info(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop:MSG_ANTENNA_RESPONSE')
+                    logging.info(f'API call returned HTTP status {http_status} {m1}',
+                                 'main:msg_loop:MSG_ANTENNA_RESPONSE')
                     await update_radio_display(None, '')
                     if current_antenna_list_index < len(band_antennae) - 1:
                         current_antenna_list_index = current_antenna_list_index + 1
-                    await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+                    await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
+                                                  (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
         else:
@@ -879,7 +905,7 @@ async def main():
     time_set = False
 
     if upython:
-        #if logging.loglevel != logging.DEBUG:
+        # if logging.loglevel != logging.DEBUG:
         #    _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, has_display=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
