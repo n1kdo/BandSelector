@@ -907,7 +907,7 @@ async def main():
     if upython:
         # if logging.loglevel != logging.DEBUG:
         #    _ = Watchdog()
-        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, has_display=True)
+        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, long_messages=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
         _switch_poller_task = asyncio.create_task(poll_switch())
     else:
