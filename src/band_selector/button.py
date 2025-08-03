@@ -1,6 +1,6 @@
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
@@ -47,7 +47,7 @@ class Button:
     async def _edge_checker(self):
         while True:
             latest = self._pin.value()
-            if latest != self._last:  # is it different than the last time?
+            if latest != self._last:  # is it different from the last time?
                 # yeah, do something
                 if latest == 1:  # button was released
                     await self._queue.put(self._long_msg if self._timer >= Button._long_press_count else self._short_msg)
