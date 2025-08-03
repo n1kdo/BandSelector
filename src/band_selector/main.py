@@ -179,14 +179,14 @@ switch_poll_delay = 30
 switch_timeouts = 0
 
 # well-loved status messages
-radio_status = ['', '']
-network_status = ['', '']
+ui_pages = [['',''],['','']]
+num_ui_pages = len(ui_pages)
 
 # UI state machine data
-_RADIO_STATUS_STATE = const(0)
-_NETWORK_STATUS_STATE = const(1)
+_RADIO_DATA_PAGE = const(0)
+_NETWORK_DATA_PAGE = const(1)
 
-ui_page = _RADIO_STATUS_STATE
+ui_page = _RADIO_DATA_PAGE
 current_antenna_list_index = 0
 
 def select_restart_mode(mode):
@@ -513,18 +513,18 @@ async def new_band(new_band_number):
         logging.warning('new band with invalid band number')
         return
     logging.info(f'new band: {BANDS[new_band_number]}', 'main:new_band')
-    await update_radio_display(f'{radio_name} {BANDS[new_band_number]}', None)
+    await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} {BANDS[new_band_number]}', None)
     set_inhibit(1)
     band_antennae = find_band_antennae(new_band_number)
     if len(band_antennae) == 0:
         current_antenna_list_index = -1
         logging.warning(f'no antenna available for band {BANDS[new_band_number]}', 'main:new_band')
         #                                           '12345678901234567890'
-        await update_radio_display(None, '*No Antenna for Band')
+        await update_ui_page(_RADIO_DATA_PAGE, None, '*No Antenna for Band')
     else:
         if switch_connected:
             logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
-            await update_radio_display(None, 'Requesting Antenna')
+            await update_ui_page(_RADIO_DATA_PAGE, None, 'Requesting Antenna')
             current_antenna_list_index = 0
             await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
                                           (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
@@ -550,47 +550,31 @@ async def change_band_antenna(up=True):
     return True
 
 
-# could maybe make next two funcs into their own class, encapsulate the global data...
-async def update_radio_display(line1=None, line2=None):
-    global radio_status
+async def update_ui_page(page, line1=None, line2=None):
+    global ui_pages
     updated = False
-    if line1 is not None and radio_status[0] != line1:
-        radio_status[0] = line1
-        updated = True
-    if line2 is not None and radio_status[1] != line2:
-        radio_status[1] = line2
-        updated = True
-    if updated:
-        await show_radio_display()
+    if 0 <= page < len(ui_pages):
+        if line1 is not None and ui_pages[page][0] != line1:
+            ui_pages[page][0] = line1
+            updated = True
+        if line2 is not None and ui_pages[page][1] != line2:
+            ui_pages[page][1] = line2
+            updated = True
+        if updated:
+            await show_ui_page(page)
 
 
-async def show_radio_display():
-    await msgq.put((_MSG_LCD_LINE0, radio_status[0]))  # update display
-    await msgq.put((_MSG_LCD_LINE1, radio_status[1]))  # update display
-
-
-async def update_network_display(line1=None, line2=None):
-    global network_status
-    updated = False
-    if line1 is not None and line1 != network_status[0]:
-        network_status[0] = line1
-        updated = True
-    if line2 is not None and line2 != network_status[1]:
-        network_status[1] = line2
-        updated = True
-    if updated:
-        await show_network_display()
-
-
-async def show_network_display():
-    await msgq.put((_MSG_LCD_LINE0, network_status[0]))  # update display
-    await msgq.put((_MSG_LCD_LINE1, network_status[1]))  # update display
-
+async def show_ui_page(page):
+    global ui_page
+    if 0 <= page < len(ui_pages):
+        await msgq.put((_MSG_LCD_LINE0, ui_pages[page][0]))  # update display
+        await msgq.put((_MSG_LCD_LINE1, ui_pages[page][1]))  # update display
+        ui_page = page
 
 async def msg_loop(q):
     global antenna_bands, antenna_names, band_antennae, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
-        ui_page, network_connected, radio_name, radio_power, \
+        network_connected, radio_name, radio_power, \
         switch_connected, switch_timeouts
 
     while True:
@@ -602,22 +586,20 @@ async def msg_loop(q):
             logging.debug(f'msg received: {m0} : {m1}', 'main:msg_loop')
         if m0 == 0:
             logging.error(f'impossible message 0')
-        elif m0 == _MSG_BTN_1:  # MENU button
+        elif m0 == _MSG_BTN_1:  # show radio status
             if m1 == 0:  # short press
-                await show_radio_display()
-                ui_page = _RADIO_STATUS_STATE
-        elif m0 == _MSG_BTN_2:  # EDIT button
+                await show_ui_page(_RADIO_DATA_PAGE)
+        elif m0 == _MSG_BTN_2:  # show network status
             if m1 == 0:  # short press
-                await show_network_display()
-                ui_page = _NETWORK_STATUS_STATE
+                await show_ui_page(_NETWORK_DATA_PAGE)
         elif m0 == _MSG_BTN_3:  # UP button
             if m1 == 0:  # short press
-                if ui_page == _RADIO_STATUS_STATE:
+                if ui_page == _RADIO_DATA_PAGE:
                     # next antenna for this band.
                     await change_band_antenna(up=True)
         elif m0 == _MSG_BTN_4:  # DOWN button
             if m1 == 0:  # short press
-                if ui_page == _RADIO_STATUS_STATE:
+                if ui_page == _RADIO_DATA_PAGE:
                     # previous antenna for this band.
                     await change_band_antenna(up=False)
         elif m0 == _MSG_POWER_SENSE:  # power sense changed
@@ -628,7 +610,7 @@ async def msg_loop(q):
             else:
                 radio_power = False
                 logging.info('radio power is off', 'main:msg_loop')
-                await update_radio_display(f'{radio_name} No Power', None)
+                await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} No Power', None)
         elif m0 == _MSG_NETWORK_UPDOWN:
             # network up/down
             if logging.should_log(logging.DEBUG):
@@ -653,7 +635,7 @@ async def msg_loop(q):
         elif m0 == _MSG_BAND_CHANGE:  # band change detected
             logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
             if not radio_power:
-                await update_radio_display(f'{radio_name} No Power', None)
+                await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} No Power', None)
                 set_inhibit(1)
             else:
                 if 0 <= m1 < len(ELECRAFT_BAND_MAP):
@@ -661,11 +643,11 @@ async def msg_loop(q):
                     if len(antenna_names) > 0:  # only change bands if there are antennas.
                         await new_band(current_band_number)
                     else:  # update the display with the band name
-                        await update_radio_display(f'{radio_name} {BANDS[current_band_number]}', None)
+                        await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} {BANDS[current_band_number]}', None)
                 else:
                     msg = f'unknown band # {m1}'
                     logging.error(msg)
-                    await update_radio_display(msg, None)
+                    await update_ui_page(_RADIO_DATA_PAGE, msg, None)
                     set_inhibit(1)
         elif m0 == _MSG_STATUS_RESPONSE:  # http status response
             http_status = m1[0]
@@ -725,13 +707,13 @@ async def msg_loop(q):
             else:
                 logging.warning(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
 
-            await update_radio_display(None, current_antenna_name)
+            await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
 
             if not radio_power:
                 msg = f'{radio_name} No Power'
                 # if logging.should_log(logging.DEBUG):  # doesn't matter
                 logging.debug(msg, 'main:msg_loop:NoPower')
-                await update_radio_display(msg, None)
+                await update_ui_page(_RADIO_DATA_PAGE, msg, None)
                 set_inhibit(1)
             else:
                 if current_band_number < 1 or current_band_number > 13:
@@ -739,13 +721,13 @@ async def msg_loop(q):
                     band_detector.invalidate()
                 else:
                     msg = f'{radio_name} {BANDS[current_band_number]}'
-                    await update_radio_display(msg, None)
+                    await update_ui_page(_RADIO_DATA_PAGE, msg, None)
                     if current_antenna < 1:
                         set_inhibit(1)
                     else:
                         if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
                             set_inhibit(0)
-                            await update_radio_display(None, current_antenna_name)
+                            await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
                         else:
                             set_inhibit(1)
                             # try to get the right band...
@@ -759,19 +741,19 @@ async def msg_loop(q):
                 current_antenna = -1
                 current_antenna_name = '_No Antenna Switch!_'
                 #                      '12345678901234567890'
-                await update_radio_display(None, current_antenna_name)
+                await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
             elif http_status == HTTP_STATUS_OK:
                 await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
-                    await update_radio_display(None, f'*{payload}')
+                    await update_ui_page(_RADIO_DATA_PAGE, None, f'*{payload}')
                     set_inhibit(1)
                 else:
                     # if there is another antenna candidate, try to get it
                     logging.info(f'API call returned HTTP status {http_status} {m1}',
                                  'main:msg_loop:MSG_ANTENNA_RESPONSE')
-                    await update_radio_display(None, '')
+                    await update_ui_page(_RADIO_DATA_PAGE, None, '')
                     if current_antenna_list_index < len(band_antennae) - 1:
                         current_antenna_list_index = current_antenna_list_index + 1
                     await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
@@ -788,14 +770,13 @@ async def msg_loop(q):
 
 
 async def net_msg_func(message: str, msg_status=0) -> None:
-    global network_status
     if logging.should_log(logging.INFO):
         logging.info(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     lines = message.split('\n')
     if len(lines) == 1:
-        await update_network_display(message)
+        await update_ui_page(_NETWORK_DATA_PAGE, message)
     else:
-        await update_network_display(lines[0], lines[1])
+        await update_ui_page(_NETWORK_DATA_PAGE, lines[0], lines[1])
     if msg_status == 1:
         await msgq.put((_MSG_NETWORK_UPDOWN, 1))
 
