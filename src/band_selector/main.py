@@ -573,12 +573,15 @@ async def change_band_antenna(up=True):
 # could maybe make next two funcs into their own class, encapsulate the global data... TODO
 async def update_radio_display(line1=None, line2=None):
     global radio_status
+    updated = False
     if line1 is not None and radio_status[0] != line1:
         radio_status[0] = line1
-        await msgq.put((_MSG_LCD_LINE0, line1))  # update display
+        updated = True
     if line2 is not None and radio_status[1] != line2:
         radio_status[1] = line2
-        await msgq.put((_MSG_LCD_LINE1, line2))  # update display
+        updated = True
+    if updated:
+        await show_radio_display()
 
 
 async def show_radio_display():
@@ -588,12 +591,15 @@ async def show_radio_display():
 
 async def update_network_display(line1=None, line2=None):
     global network_status
+    updated = False
     if line1 is not None and line1 != network_status[0]:
         network_status[0] = line1
-        await msgq.put((_MSG_LCD_LINE0, line1))  # update display
+        updated = True
     if line2 is not None and line2 != network_status[1]:
         network_status[1] = line2
-        await msgq.put((_MSG_LCD_LINE1, line2))  # update display
+        updated = True
+    if updated:
+        await show_network_display()
 
 
 async def show_network_display():
