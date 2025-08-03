@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.9'
+__version__ = '0.1.10'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -195,17 +195,6 @@ MENUS = [
 menu_state = _RADIO_STATUS_STATE
 current_antenna_list_index = 0
 
-
-def select_network_mode(mode):
-    global config
-    if mode and not config.get('ap_mode', False):
-        config['ap_mode'] = True
-        save_config(config)
-    if not mode and config.get('ap_mode', False):
-        config['ap_mode'] = False
-        save_config(config)
-
-
 def select_restart_mode(mode):
     global restart, keep_running
     if mode:
@@ -334,7 +323,9 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         http_status = HTTP_STATUS_OK
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == HTTP_VERB_POST:
+        # TODO FIXME look at state of ap_mode, only allow some changes when in ap_mode.
         config = read_config()
+        ap_mode = config.get('ap_mode', False)
         dirty = False
         errors = False
         problems = []
@@ -381,11 +372,6 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             else:
                 errors = True
                 problems.append('hostname')
-        ap_mode_arg = args.get('ap_mode')
-        if ap_mode_arg is not None:
-            ap_mode = True if ap_mode_arg == '1' else False
-            config['ap_mode'] = ap_mode
-            dirty = True
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
             dhcp = True if dhcp_arg == 1 else False
@@ -660,11 +646,11 @@ async def msg_loop(q):
                     # this is when a change actually happened.
                     # logging.info(f'edited data, menu={menu_number}, item selected = {item_number}')
                     # this should be bound to the MENUS data, not hardcoded literals 0|1...
-                    if menu_number == 0:
-                        select_network_mode(item_number)
-                    elif menu_number == 1:
-                        select_restart_mode(item_number)
-                    # switch out of edit value mode
+                    #if menu_number == 0:
+                    #    select_network_mode(item_number)
+                    #elif menu_number == 1:
+                    #    select_restart_mode(item_number)
+                    ## switch out of edit value mode
                     menu_state = _MENU_MODE_STATE
                     await show_edit_display(menu_number, item_number)
         elif m0 == _MSG_BTN_3:  # UP button
@@ -894,7 +880,10 @@ async def main():
     if len(config) == 0:
         # create default configuration
         config = default_config()
+        config['ap_mode'] = sw1.value() == 0
         save_config(config)
+    else:
+        config['ap_mode'] = sw1.value() == 0
 
     config_level = config.get('log_level')
     if config_level:
