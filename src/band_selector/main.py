@@ -182,17 +182,11 @@ switch_timeouts = 0
 radio_status = ['', '']
 network_status = ['', '']
 
-# menu state machine data
+# UI state machine data
 _RADIO_STATUS_STATE = const(0)
 _NETWORK_STATUS_STATE = const(1)
-_MENU_MODE_STATE = const(2)
-_MENU_EDIT_STATE = const(3)
-MENUS = [
-    ('Network Mode', ['Station', 'Access Point']),
-    ('Restart?', ['No', 'Yes']),
-]
 
-menu_state = _RADIO_STATUS_STATE
+ui_page = _RADIO_STATUS_STATE
 current_antenna_list_index = 0
 
 def select_restart_mode(mode):
@@ -556,7 +550,7 @@ async def change_band_antenna(up=True):
     return True
 
 
-# could maybe make next two funcs into their own class, encapsulate the global data... TODO
+# could maybe make next two funcs into their own class, encapsulate the global data...
 async def update_radio_display(line1=None, line2=None):
     global radio_status
     updated = False
@@ -593,29 +587,11 @@ async def show_network_display():
     await msgq.put((_MSG_LCD_LINE1, network_status[1]))  # update display
 
 
-async def show_edit_display(menu_number, item_number):
-    current_menu = MENUS[menu_number]
-    menu_name = current_menu[0]
-    item_value = current_menu[1][item_number]
-
-    if menu_state == _MENU_MODE_STATE:
-        menu_name = f'>{menu_name:^18s}<'
-
-    if menu_state == _MENU_EDIT_STATE:
-        item_value = f'>{item_value:^18s}<'
-
-    await msgq.put((_MSG_LCD_LINE0, menu_name))  # update display with menu name
-    await msgq.put((_MSG_LCD_LINE1, item_value))  # update display with menu item name
-
-
 async def msg_loop(q):
     global antenna_bands, antenna_names, band_antennae, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
-        menu_state, network_connected, radio_name, radio_power, \
+        ui_page, network_connected, radio_name, radio_power, \
         switch_connected, switch_timeouts
-
-    menu_number = 0
-    item_number = 0
 
     while True:
         msg = await q.get()
@@ -628,64 +604,22 @@ async def msg_loop(q):
             logging.error(f'impossible message 0')
         elif m0 == _MSG_BTN_1:  # MENU button
             if m1 == 0:  # short press
-                if menu_state == _RADIO_STATUS_STATE:
-                    menu_state = _MENU_MODE_STATE
-                    await show_edit_display(menu_number, item_number)
-                else:  # any other state, return to RADIO_STATUS_STATE
-                    menu_state = _RADIO_STATUS_STATE
-                    await show_radio_display()
+                await show_radio_display()
+                ui_page = _RADIO_STATUS_STATE
         elif m0 == _MSG_BTN_2:  # EDIT button
             if m1 == 0:  # short press
-                if menu_state == _RADIO_STATUS_STATE:
-                    menu_state = _NETWORK_STATUS_STATE
-                    await show_network_display()
-                elif menu_state == _MENU_MODE_STATE:  # in EDIT mode
-                    menu_state = _MENU_EDIT_STATE
-                    await show_edit_display(menu_number, item_number)
-                elif menu_state == _MENU_EDIT_STATE:  # in EDIT mode, editing
-                    # this is when a change actually happened.
-                    # logging.info(f'edited data, menu={menu_number}, item selected = {item_number}')
-                    # this should be bound to the MENUS data, not hardcoded literals 0|1...
-                    #if menu_number == 0:
-                    #    select_network_mode(item_number)
-                    #elif menu_number == 1:
-                    #    select_restart_mode(item_number)
-                    ## switch out of edit value mode
-                    menu_state = _MENU_MODE_STATE
-                    await show_edit_display(menu_number, item_number)
+                await show_network_display()
+                ui_page = _NETWORK_STATUS_STATE
         elif m0 == _MSG_BTN_3:  # UP button
             if m1 == 0:  # short press
-                if menu_state == _RADIO_STATUS_STATE:
+                if ui_page == _RADIO_STATUS_STATE:
                     # next antenna for this band.
                     await change_band_antenna(up=True)
-                elif menu_state == _MENU_MODE_STATE:
-                    menu_number += 1
-                    if menu_number >= len(MENUS):
-                        menu_number = 0
-                    await show_edit_display(menu_number, item_number)
-                elif menu_state == _MENU_EDIT_STATE:  # in EDIT mode, editing
-                    logging.info(f'UP button in edit edit mode. {menu_number} {item_number}')
-                    logging.info(f'menu_state = {menu_state}')
-                    logging.info(f'menu: {MENUS[menu_number]}')
-                    item_number += 1
-                    if item_number >= len(MENUS[menu_number][1]):
-                        item_number = 0
-                    await show_edit_display(menu_number, item_number)
         elif m0 == _MSG_BTN_4:  # DOWN button
             if m1 == 0:  # short press
-                if menu_state == _RADIO_STATUS_STATE:
+                if ui_page == _RADIO_STATUS_STATE:
                     # previous antenna for this band.
                     await change_band_antenna(up=False)
-                elif menu_state == _MENU_MODE_STATE:
-                    menu_number -= 1
-                    if menu_number < 0:
-                        menu_number = len(MENUS) - 1
-                    await show_edit_display(menu_number, item_number)
-                elif menu_state == _MENU_EDIT_STATE:  # in EDIT mode, editing
-                    item_number -= 1
-                    if item_number < 0:
-                        item_number = len(MENUS[menu_number][1]) - 1
-                    await show_edit_display(menu_number, item_number)
         elif m0 == _MSG_POWER_SENSE:  # power sense changed
             if m1 == 0:
                 # detect missing radio.  do something about it.
