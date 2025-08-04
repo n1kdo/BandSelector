@@ -521,7 +521,7 @@ async def new_band(new_band_number):
         current_antenna_list_index = -1
         logging.warning(f'no antenna available for band {BANDS[new_band_number]}', 'main:new_band')
         #                                           '12345678901234567890'
-        await update_ui_page(_RADIO_DATA_PAGE, None, '*No Antenna for Band')
+        await update_ui_page(_RADIO_DATA_PAGE, None, '*No Antenna for Band*')
     else:
         if switch_connected:
             logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
@@ -671,7 +671,7 @@ async def msg_loop(q):
                         current_antenna = status_dict.get('antenna_index', -1)
                         current_antenna_name = status_dict.get('antenna_name', 'unknown antenna')
                         if len(band_antennae) > 1:
-                            display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                            display_antenna_name = f'{current_antenna_name} +{len(band_antennae) - 1}'
                         radio_name = status_dict.get('radio_name', 'unknown radio')
                     elif status_radio_number == -1:
                         antenna_names = status_dict.get('antenna_names', ['', '', '', '', '', '', '', ''])
@@ -728,7 +728,7 @@ async def msg_loop(q):
                         if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
                             set_inhibit(0)
                             if len(band_antennae) > 1:
-                                display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                                display_antenna_name = f'{current_antenna_name} +{len(band_antennae) - 1}'
                             else:
                                 display_antenna_name = current_antenna_name
                             await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
@@ -751,7 +751,7 @@ async def msg_loop(q):
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
-                    await update_ui_page(_RADIO_DATA_PAGE, None, f'*{payload}')
+                    await update_ui_page(_RADIO_DATA_PAGE, None, f'*{payload}*')
                     set_inhibit(1)
                 else:
                     # if there is another antenna candidate, try to get it
