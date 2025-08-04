@@ -317,9 +317,10 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         http_status = HTTP_STATUS_OK
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == HTTP_VERB_POST:
-        # TODO FIXME look at state of ap_mode, only allow some changes when in ap_mode.
-        config = read_config()
+        # could look at state of ap_mode, only allow some changes when in ap_mode.
         ap_mode = config.get('ap_mode', False)
+        new_config = read_config()
+        new_config['ap_mode'] = False  # always save as False
         dirty = False
         errors = False
         problems = []
@@ -327,7 +328,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if log_level is not None:
             log_level = log_level.strip().upper()
             if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NONE']:
-                config['log_level'] = log_level
+                new_config['log_level'] = log_level
                 logging.set_level(log_level)
                 dirty = True
             else:
@@ -337,7 +338,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
             if 0 <= web_port_int <= 65535:
-                config['web_port'] = web_port
+                new_config['web_port'] = web_port
                 dirty = True
             else:
                 errors = True
@@ -345,7 +346,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         ssid = args.get('SSID')
         if ssid is not None:
             if 0 < len(ssid) < 64:
-                config['SSID'] = ssid
+                new_config['SSID'] = ssid
                 dirty = True
             else:
                 errors = True
@@ -353,7 +354,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         secret = args.get('secret')
         if secret is not None and len(secret) > 0:
             if 8 <= len(secret) < 32:
-                config['secret'] = secret
+                new_config['secret'] = secret
                 dirty = True
             else:
                 errors = True
@@ -361,7 +362,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         hostname = args.get('hostname')
         if hostname is not None:
             if 0 < len(hostname) < 64:
-                config['hostname'] = hostname
+                new_config['hostname'] = hostname
                 dirty = True
             else:
                 errors = True
@@ -369,35 +370,35 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
             dhcp = True if dhcp_arg == 1 else False
-            config['dhcp'] = dhcp
+            new_config['dhcp'] = dhcp
             dirty = True
         ip_address = args.get('ip_address')
         if ip_address is not None:
-            config['ip_address'] = ip_address
+            new_config['ip_address'] = ip_address
             dirty = True
         netmask = args.get('netmask')
         if netmask is not None:
-            config['netmask'] = netmask
+            new_config['netmask'] = netmask
             dirty = True
         gateway = args.get('gateway')
         if gateway is not None:
-            config['gateway'] = gateway
+            new_config['gateway'] = gateway
             dirty = True
         dns_server = args.get('dns_server')
         if dns_server is not None:
-            config['dns_server'] = dns_server
+            new_config['dns_server'] = dns_server
             dirty = True
         switch_ip = args.get('switch_ip')
         if switch_ip is not None:
             switch_host = switch_ip.encode()
-            config['switch_ip'] = switch_ip
+            new_config['switch_ip'] = switch_ip
             dirty = True
         cfg_radio_number = args.get('radio_number')
         if cfg_radio_number is not None:
             cfg_radio_number = safe_int(cfg_radio_number, -1)
             if 1 <= cfg_radio_number <= 2:
                 radio_number = cfg_radio_number
-                config['radio_number'] = cfg_radio_number
+                new_config['radio_number'] = cfg_radio_number
                 dirty = True
             else:
                 errors = True
@@ -405,17 +406,17 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if poll_delay > 0:
             if 0 <= poll_delay < 60:
                 switch_poll_delay = poll_delay
-                config['poll_delay'] = poll_delay
+                new_config['poll_delay'] = poll_delay
                 dirty = True
             else:
                 errors = True
         if not errors:
             if dirty:
-                save_config(config)
+                save_config(new_config)
+                await msgq.put((_MSG_CONFIG_CHANGE, 0))
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
-            await msgq.put((_MSG_CONFIG_CHANGE, 0))
         else:
             response = b'parameter out of range\r\n'
             logging.error(f'problems {problems}', 'main:api_config_callback')
@@ -571,6 +572,7 @@ async def show_ui_page(page):
         await msgq.put((_MSG_LCD_LINE1, ui_pages[page][1]))  # update display
         ui_page = page
 
+
 async def msg_loop(q):
     global antenna_bands, antenna_names, band_antennae, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
@@ -651,6 +653,7 @@ async def msg_loop(q):
                     set_inhibit(1)
         elif m0 == _MSG_STATUS_RESPONSE:  # http status response
             http_status = m1[0]
+            display_antenna_name = current_antenna_name
             if http_status == HTTP_STATUS_OK:
                 try:
                     status_dict = json.loads(m1[1])
@@ -667,6 +670,8 @@ async def msg_loop(q):
                     if status_radio_number == radio_number:
                         current_antenna = status_dict.get('antenna_index', -1)
                         current_antenna_name = status_dict.get('antenna_name', 'unknown antenna')
+                        if len(band_antennae) > 1:
+                            display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
                         radio_name = status_dict.get('radio_name', 'unknown radio')
                     elif status_radio_number == -1:
                         antenna_names = status_dict.get('antenna_names', ['', '', '', '', '', '', '', ''])
@@ -699,15 +704,10 @@ async def msg_loop(q):
                     switch_connected = False
                     current_antenna = -1
                     current_antenna_name = 'No Antenna Switch!'
-                # TODO try the status read again?
-                if False:
-                    if switch_poll_delay > 2 and network_connected:
-                        await asyncio.sleep(1)
-                        await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
             else:
                 logging.warning(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
 
-            await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+            await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
 
             if not radio_power:
                 msg = f'{radio_name} No Power'
@@ -727,7 +727,11 @@ async def msg_loop(q):
                     else:
                         if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
                             set_inhibit(0)
-                            await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                            if len(band_antennae) > 1:
+                                display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                            else:
+                                display_antenna_name = current_antenna_name
+                            await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
                         else:
                             set_inhibit(1)
                             # try to get the right band...
