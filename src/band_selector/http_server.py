@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 import gc
 import json
@@ -181,8 +181,10 @@ class HttpServer:
     def unpack_args(cls, value):
         if not value:
             return {}
+        # Accept bytes or str; decode only if needed to avoid extra allocations and errors.
+        if isinstance(value, bytes):
+            value = value.decode()
         args = {}
-        value = value.decode()
         args_list = value.split('&')
         for arg in args_list:
             arg_parts = arg.split('=')
@@ -255,7 +257,7 @@ class HttpServer:
                     if request_content_length > 0:
                         if request_content_type == self.CT_APP_WWW_FORM:
                             data = await reader.read(request_content_length)
-                            args = self.unpack_args(data.decode())
+                            args = self.unpack_args(data)
                         elif request_content_type == self.CT_APP_JSON:
                             data = await reader.read(request_content_length)
                             args = json.loads(data.decode())
@@ -282,8 +284,9 @@ class HttpServer:
         writer.close()
         await writer.wait_closed()
         elapsed = milliseconds() - t0
-        logging.info(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms',
-                     'http_server:serve_http_client')
+        if logging.should_log(logging.INFO):
+            logging.info(f'{partner} {request} {http_status} {bytes_sent} {elapsed} ms',
+                         'http_server:serve_http_client')
         gc.collect()
 
 #

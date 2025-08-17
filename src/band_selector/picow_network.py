@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.93.1'  # derived from '0.9.93'  # 2025-07-28
+__version__ = '0.9.93.2'  # derived from '0.9.93'  # 2025-08-09
 #
 # this experimental version wants to try to ping the gateway.
 #
@@ -167,8 +167,7 @@ class PicowNetwork:
             mac_addr = self._wlan.config('mac')
             mac = ''
             if mac_addr is not None:
-                for b in mac_addr:
-                    mac = mac + f'{b:02x}'
+                mac = ''.join([f'{b:02x}' for b in mac_addr])
                 if len(mac) == 12:
                     self._default_ssid = self._default_ssid + '-' + mac[6:]
             self._wlan.config(ssid=self._default_ssid, key=self._default_secret, security=security)
@@ -235,12 +234,10 @@ class PicowNetwork:
                     if scan_rssi > best_rssi:
                         best_rssi = scan_rssi
                         bssid = result[1]
-            bssid_str = ''
-            for b in bssid:
-                bssid_str += f'{b:02x}'
-
-            logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
-                          'PicowNetwork:connect_to_network')
+            if bssid is not None and logging.should_log(logging.DEBUG):
+                bssid_str = ''.join([f'{b:02x}' for b in bssid])
+                logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
+                'PicowNetwork:connect_to_network')
 
             if not self._is_dhcp:
                 if self._ip_address is not None and self._netmask is not None and self._gateway is not None and self._dns_server is not None:

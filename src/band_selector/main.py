@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.10'
+__version__ = '0.1.11'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -66,16 +66,16 @@ else:
 
 import uaiohttpclient as aiohttp
 
-BANDS = ['NoBand', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M', '10M', '6M', '2M', '70cm', 'NoBand',
-         'NoBand']
-MASKS = [0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,
-         0x0000, 0x0000]
+BANDS = ('NoBand', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M', '10M', '6M', '2M', '70cm', 'NoBand',
+         'NoBand')
+MASKS = (0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,
+         0x0000, 0x0000)
 _MIN_BAND = const(1)
 _MAX_BAND = const(13)
 
 # this list maps band indexes to the value of the 4-bit band select outputs.
 # there are 11 valid outputs, 0000 -> 1010 (0-10), the other five map to NO BAND (0)
-ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
+ELECRAFT_BAND_MAP = (3,  # 0000 -> 60M
                      1,  # 0001 -> 160M
                      2,  # 0010 -> 80M
                      4,  # 0011 -> 40M
@@ -91,7 +91,7 @@ ELECRAFT_BAND_MAP = [3,  # 0000 -> 60M
                      0,  # 1101 -> invalid
                      0,  # 1110 -> invalid
                      0,  # 1111 -> invalid
-                     ]
+                     )
 
 # message IDs
 _MSG_BTN_1 = const(1)
@@ -278,9 +278,9 @@ async def call_api(url, msg, q):
         await q.put(msg)
     else:
         http_status = resp.status
-        if logging.should_log(logging.INFO):
+        if logging.should_log(logging.DEBUG):
             dt = milliseconds() - t0
-            logging.info(f'api call to {url} returned {http_status} after {dt} ms', 'main:call_api')
+            logging.debug(f'api call to {url} returned {http_status} after {dt} ms', 'main:call_api')
         msg = (msg[0], (http_status, 'no response'))
         asyncio.create_task(api_response(resp, msg, q))
 
@@ -618,24 +618,25 @@ async def msg_loop(q):
             if logging.should_log(logging.DEBUG):
                 logging.debug(f'msg received: {msg}', 'main:msg_loop:MSG_NETWORK_UPDOWN')
             if m1 == 1:  # network is up!
-                logging.info('Network is up!', 'main:msg_loop')
+                logging.info('Network is up!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                 network_connected = True
                 await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
             else:
-                logging.info('Network is DOWN!', 'main:msg_loop')
+                logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                 network_connected = False
         elif m0 == _MSG_CONFIG_CHANGE:
             await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
-            # await asyncio.sleep_ms(50)
-            logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
+            if logging.should_log(logging.INFO):
+                logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
         elif m0 == _MSG_LCD_LINE1:  # LCD line 2
             lcd[1] = f'{m1:^20s}'
-            # await asyncio.sleep_ms(50)
-            logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
+            if logging.should_log(logging.INFO):
+                logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
         elif m0 == _MSG_BAND_CHANGE:  # band change detected
-            logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
+            if logging.should_log(logging.INFO):
+                logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
             if not radio_power:
                 await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} No Power', None)
                 set_inhibit(1)
@@ -774,8 +775,8 @@ async def msg_loop(q):
 
 
 async def net_msg_func(message: str, msg_status=0) -> None:
-    if logging.should_log(logging.INFO):
-        logging.info(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
+    if logging.should_log(logging.DEBUG):
+        logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     lines = message.split('\n')
     if len(lines) == 1:
         await update_ui_page(_NETWORK_DATA_PAGE, message)
