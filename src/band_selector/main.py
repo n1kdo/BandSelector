@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.11'
+__version__ = '0.1.12'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -213,20 +213,21 @@ def save_config(config_data):
 
 def default_config():
     return {
-        'SSID': 'your_network_ssid',
-        'secret': 'your_network_password',
-        'web_port': '80',
         'ap_mode': False,
+        'auto_on': False,
         'dhcp': True,
+        'dns_server': '8.8.8.8',
+        'gateway': '192.168.1.1',
         'hostname': 'selector1',
         'ip_address': '192.168.1.73',
         'log_level': 'debug',
         'netmask': '255.255.255.0',
-        'gateway': '192.168.1.1',
-        'dns_server': '8.8.8.8',
-        'radio_number': '1',
-        'switch_ip': '192.168.1.166',
         'poll_delay': '10',
+        'radio_number': '1',
+        'SSID': 'your_network_ssid',
+        'secret': 'your_network_password',
+        'switch_ip': '192.168.1.166',
+        'web_port': '80',
     }
 
 
@@ -393,6 +394,10 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             switch_host = switch_ip.encode()
             new_config['switch_ip'] = switch_ip
             dirty = True
+        cfg_auto_on = args.get('auto_on')
+        if cfg_auto_on is not None:
+            auto_on = cfg_auto_on == 1
+            new_config['auto_on'] = auto_on
         cfg_radio_number = args.get('radio_number')
         if cfg_radio_number is not None:
             cfg_radio_number = safe_int(cfg_radio_number, -1)
@@ -810,6 +815,7 @@ async def main():
         logging.set_level(config_level)
 
     radio_number = config.get('radio_number', -1)
+    auto_on = config.get('auto_on', False)
     switch_host = config.get('switch_ip', 'localhost').encode()
     switch_poll_delay = safe_int(config.get('poll_delay') or 10, 10)
 
@@ -844,12 +850,19 @@ async def main():
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
 
+    auto_power_timer = 5 if auto_on else 0
     while keep_running:
         await asyncio.sleep(1.0)
         if picow_network is not None and picow_network.is_connected() and not time_set:
             get_ntp_time()
             if time.time() > 1700000000:
                 time_set = True
+        if auto_power_timer > 0:
+            auto_power_timer -= 1
+            if auto_power_timer == 0:
+                if not radio_power:
+                    logging.info('Attempting to auto-power-on the radio...', 'main:main')
+                    await power_on()
 
     if upython:
         logging.warning('calling soft_reset', 'main:main')

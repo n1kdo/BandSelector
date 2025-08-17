@@ -134,6 +134,7 @@
         function process_get_config_response(message) {
             let config = JSON.parse(message);
             document.getElementById("radio_number").value = config.radio_number;
+            document.getElementById("auto_on").checked = config.auto_on;
             document.getElementById("switch_ip").value = config.switch_ip;
             document.getElementById("poll_delay").value = config.poll_delay;
             document.getElementById("log_level").value = config.log_level;
@@ -141,11 +142,13 @@
 
         function set_config() {
             let radio_number = document.getElementById("radio_number").value;
+            let auto_on = document.getElementById("auto_on").checked;
             let switch_ip = document.getElementById("switch_ip").value;
             let poll_delay = document.getElementById("poll_delay").value;
             let log_level = document.getElementById("log_level").value;
             let config = {};
             config.radio_number = radio_number;
+            config.auto_on = auto_on;
             config.switch_ip = switch_ip;
             config.poll_delay = poll_delay;
             config.log_level = log_level;
@@ -177,6 +180,10 @@
                 <p>
                     <label for="radio_number">Radio Number:</label>
                     <input type="number" id="radio_number" min="1" max="2">
+                </p>
+                <p>
+                    <label for="auto_on">Radio Auto On:</label>
+                    <input type="checkbox" id="auto_on">
                 </p>
                 <p>
                     <label for="switch_ip">Switch IP Address:</label>
@@ -211,7 +218,7 @@
                 <a href="network.html">Network</a>
                 <a href="files.html">Files</a>
             </div>
-            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250111</div>
+            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250817</div>
         </div>
     </body>
 </html>
