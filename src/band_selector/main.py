@@ -851,18 +851,25 @@ async def main():
     _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
 
     auto_power_timer = 5 if auto_on else 0
+    ten_count = 0
+    sleep_ms = asyncio.sleep_ms
     while keep_running:
-        await asyncio.sleep(1.0)
-        if picow_network is not None and picow_network.is_connected() and not time_set:
-            get_ntp_time()
-            if time.time() > 1700000000:
-                time_set = True
-        if auto_power_timer > 0:
-            auto_power_timer -= 1
-            if auto_power_timer == 0:
-                if not radio_power:
-                    logging.info('Attempting to auto-power-on the radio...', 'main:main')
-                    await power_on()
+        await sleep_ms(100) # asyncio.sleep(1.0)
+        ten_count += 1
+        if ten_count == 10:
+            ten_count = 0
+            if picow_network is not None and picow_network.is_connected() and not time_set:
+                get_ntp_time()
+                if time.time() > 1700000000:
+                    time_set = True
+
+            if auto_power_timer > 0:
+                auto_power_timer -= 1
+                if auto_power_timer == 0:
+                    if not radio_power:
+                        logging.info('Attempting to auto-power-on the radio...', 'main:main')
+                        await power_on()
+        onboard.toggle()
 
     if upython:
         logging.warning('calling soft_reset', 'main:main')
