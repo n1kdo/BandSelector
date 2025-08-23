@@ -119,6 +119,7 @@ msgq = RingbufQueue(32)
 # other I/O setup
 onboard = machine.Pin('LED', machine.Pin.OUT, value=1)  # turn on right away
 red_led = machine.Pin(0, machine.Pin.OUT, value=0)  # Red LED on GPIO0 / pin 1
+blinky = machine.Pin(14, machine.Pin.OUT, value=0)  # diagnostic LED on GPIO14 / pin 19
 
 # push buttons on display board on GPIO10-13
 sw1 = machine.Pin(13, machine.Pin.IN, machine.Pin.PULL_UP)  # mode button input on GPIO13 / pin 17
@@ -134,7 +135,7 @@ Button(sw4, msgq, (_MSG_BTN_4, 0), (_MSG_BTN_4, 1))  # SW 4
 # LCD display on display board on GPIO pins
 # RW is hardwired to GPIO7,
 machine.Pin(7, machine.Pin.OUT, value=0)  # this is the RW pin, hold it low.
-light = machine.Pin(9, machine.Pin.OUT, value=1)  # this is the backlight, so I can blink it.
+light = machine.Pin(9, machine.Pin.OUT, value=1)  # GPIO9/pin 12, this is the backlight, so I can blink it.
 lcd = LCD((8, 6, 5, 4, 3, 2), cols=20)
 
 # radio interface on GPIO15-22
@@ -869,7 +870,7 @@ async def main():
                     if not radio_power:
                         logging.info('Attempting to auto-power-on the radio...', 'main:main')
                         await power_on()
-        onboard.toggle()
+        blinky.toggle()
 
     if upython:
         logging.warning('calling soft_reset', 'main:main')
