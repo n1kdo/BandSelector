@@ -52,6 +52,7 @@ from http_server import (HttpServer,
 import micro_logging as logging
 from ntp import get_ntp_time
 from ringbuf_queue import RingbufQueue
+import udp_messages
 from utils import milliseconds, upython, safe_int, num_bits_set
 
 if upython:
@@ -107,6 +108,7 @@ _MSG_LCD_LINE1 = const(91)
 _MSG_BAND_CHANGE = const(100)
 _MSG_STATUS_RESPONSE = const(201)
 _MSG_ANTENNA_RESPONSE = const(202)
+_MSG_UDP_RESPONSE = const(203)
 
 # http api status for failures
 _API_STATUS_TIMEOUT = const(-1)
@@ -771,6 +773,9 @@ async def msg_loop(q):
                                                   (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
+        elif m0 -- _MSG_UDP_RESPONSE:
+            logging.info(f'udp message {m1}', 'main:msg_loop')
+            # FIXME TODO
         else:
             logging.error(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
         dt = milliseconds() - t0
@@ -819,6 +824,7 @@ async def main():
     auto_on = config.get('auto_on', False)
     switch_host = config.get('switch_ip', 'localhost').encode()
     switch_poll_delay = safe_int(config.get('poll_delay') or 10, 10)
+    ap_mode = config.get('ap_mode', False)
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 0 or web_port > 65535:
@@ -851,6 +857,9 @@ async def main():
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
 
+    receive_broadcasts = None
+    broadcast_receiver_task = None
+
     auto_power_timer = 5 if auto_on else 0
     ten_count = 0
     sleep_ms = asyncio.sleep_ms
@@ -863,6 +872,17 @@ async def main():
                 get_ntp_time()
                 if time.time() > 1700000000:
                     time_set = True
+
+            if picow_network is not None and picow_network.is_connected() and receive_broadcasts is None:
+                ip_address = picow_network.get_ip_address()
+                netmask = picow_network.get_netmask()
+                broadcast_address = udp_messages.calculate_broadcast_address(ip_address, netmask)
+                receive_broadcasts = udp_messages.ReceiveBroadcasts(receive_ip=broadcast_address,
+                                                                    receive_port=65073,
+                                                                    config=config,
+                                                                    message_queue=msgq,
+                                                                    message_id = _MSG_UDP_RESPONSE)
+                broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
 
             if auto_power_timer > 0:
                 auto_power_timer -= 1
