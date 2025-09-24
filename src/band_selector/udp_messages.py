@@ -60,7 +60,6 @@ def calculate_broadcast_address(ip_address, netmask):
     mask_int = sum([int(x) << 8 * i for i, x in enumerate(reversed(netmask.split('.')))])
     mask_mask = mask_int ^ 0xffffffff
     bcast_int = ip_int | mask_mask
-    # TODO make this into bytes, not str -- maybe
     bcast_addr = ".".join(map(str, [
         ((bcast_int >> 24) & 0xff),
         ((bcast_int >> 16) & 0xff),

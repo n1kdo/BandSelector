@@ -400,7 +400,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             dirty = True
         switch_name_arg = args.get('switch_name')
         if switch_name_arg is not None:
-            switch_name = switch_name_arg  # .encode() # FIXME
+            switch_name = switch_name_arg
             new_config['switch_name'] = switch_name_arg
             dirty = True
         cfg_auto_on = args.get('auto_on')
@@ -667,7 +667,7 @@ async def msg_loop(q):
                 #                      '12345678901234567890'
                 await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
             elif http_status == HTTP_STATUS_OK:
-                pass  # TODO can this be removed?
+                logging.debug('antenna request was successful', 'main:msg_loop')
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
@@ -818,7 +818,7 @@ async def main():
     radio_number = config.get('radio_number', -1)
     auto_on = config.get('auto_on', False)
     switch_host = config.get('switch_ip', 'localhost').encode()
-    switch_name = config.get('switch_name', 'switch-name')  # .encode()  # FIXME
+    switch_name = config.get('switch_name', 'switch-name')
     ap_mode = config.get('ap_mode', False)
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
@@ -878,7 +878,7 @@ async def main():
                                                            message_id=_MSG_UDP_RESPONSE)
                     broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
 
-            if auto_power_timer > 0:  # TODO FIXME use the new timer_manager to auto-start the radio
+            if auto_power_timer > 0:
                 auto_power_timer -= 1
                 if auto_power_timer == 0:
                     if not radio_power:
