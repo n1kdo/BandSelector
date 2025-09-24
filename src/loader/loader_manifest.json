@@ -13,6 +13,7 @@
     "micro_logging.py",
     "picow_network.py",
     "ringbuf_queue.py",
+    "timer_manager.py",
     "uaiohttpclient.py",
     "udp_messages.py",
     "uping.py",

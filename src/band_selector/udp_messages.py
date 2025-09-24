@@ -43,6 +43,15 @@ from struct import calcsize, pack_into, unpack
 # uint8 uint8 16s 16s 20s 20s 20s 20s 20s 20s 20s 20s hhhhhhhh64s
 STATUS_BROADCAST_FMT = 'BB16s16s20s20s20s20s20s20s20s20shhhhhhhh64s'
 STATUS_BROADCAST_SIZE = calcsize(STATUS_BROADCAST_FMT)
+RADIO_1_ANTENNA_OFFSET = 0
+RADIO_2_ANTENNA_OFFSET = 1
+RADIO_NAMES_OFFSET = 2
+RADIO_NAMES_SIZE = 2
+ANTENNA_NAMES_OFFSET = 4
+ANTENNA_NAMES_SIZE = 8
+ANTENNA_BANDS_OFFSET = 12
+ANTENNA_BANDS_SIZE = 8
+SWITCH_NAME_OFFSET = 20
 
 
 def calculate_broadcast_address(ip_address, netmask):
@@ -136,7 +145,7 @@ class ReceiveBroadcasts:
             self.receive_socket.bind(sockaddr)
             self.receive_socket.settimeout(0.001)
             logging.info(f'Broadcast address is {receive_ip}:{receive_port}', 'udp_messages:ReceiveBroadcasts.init')
-            logging.info(f'Starting status broadcasts', 'udp_messages:ReceiveBroadcasts.init')
+            logging.info(f'Listening for status broadcasts', 'udp_messages:ReceiveBroadcasts.init')
 
         except Exception as exc:
             logging.exception('problem setting up socket', 'udp_messages:ReceiveBroadcasts.init', exc_info=exc)

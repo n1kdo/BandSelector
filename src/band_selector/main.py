@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.12'
+__version__ = '0.1.13'
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -52,7 +52,11 @@ from http_server import (HttpServer,
 import micro_logging as logging
 from ntp import get_ntp_time
 from ringbuf_queue import RingbufQueue
-import udp_messages
+import timer_manager
+from udp_messages import (calculate_broadcast_address, ReceiveBroadcasts, RADIO_1_ANTENNA_OFFSET,
+                          RADIO_2_ANTENNA_OFFSET, RADIO_NAMES_OFFSET, RADIO_NAMES_SIZE, ANTENNA_NAMES_OFFSET,
+                          ANTENNA_NAMES_SIZE, ANTENNA_BANDS_OFFSET, ANTENNA_BANDS_SIZE, SWITCH_NAME_OFFSET)
+
 from utils import milliseconds, upython, safe_int, num_bits_set
 
 if upython:
@@ -61,6 +65,7 @@ if upython:
     from watchdog import Watchdog
 else:
     from not_machine import machine
+
 
     def const(i):  # support micropython const() in cpython
         return i
@@ -102,13 +107,12 @@ _MSG_BTN_4 = const(4)
 _MSG_POWER_SENSE = const(10)
 _MSG_NETWORK_CHANGE = const(20)
 _MSG_NETWORK_UPDOWN = const(50)
-_MSG_CONFIG_CHANGE = const(60)
 _MSG_LCD_LINE0 = const(90)
 _MSG_LCD_LINE1 = const(91)
 _MSG_BAND_CHANGE = const(100)
-_MSG_STATUS_RESPONSE = const(201)
 _MSG_ANTENNA_RESPONSE = const(202)
 _MSG_UDP_RESPONSE = const(203)
+_MSG_UDP_TIMEOUT = const(204)
 
 # http api status for failures
 _API_STATUS_TIMEOUT = const(-1)
@@ -153,6 +157,9 @@ poweron_pin = machine.Pin(21, machine.Pin.OUT, value=0)  # power on control on G
 powersense = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)  # power sense input on GPIO22
 GPIO_Pin(powersense, msgq, (_MSG_POWER_SENSE, 0), (_MSG_POWER_SENSE, 1))
 
+timer_mgr = timer_manager.TimerManager()
+udp_timeout_timer = -1
+
 CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
 
@@ -163,6 +170,7 @@ DEFAULT_SSID = 'selector'
 DEFAULT_WEB_PORT = 80
 
 # globals...
+ap_mode = False
 restart = False
 keep_running = True
 config = {}
@@ -178,11 +186,11 @@ radio_number = 0
 radio_power = False
 switch_connected = False
 switch_host = None
-switch_poll_delay = 30
+switch_name = ''
 switch_timeouts = 0
 
 # well-loved status messages
-ui_pages = [['',''],['','']]
+ui_pages = [['', ''], ['', '']]
 num_ui_pages = len(ui_pages)
 
 # UI state machine data
@@ -191,6 +199,7 @@ _NETWORK_DATA_PAGE = const(1)
 
 ui_page = _RADIO_DATA_PAGE
 current_antenna_list_index = 0
+
 
 def select_restart_mode(mode):
     global restart, keep_running
@@ -225,11 +234,11 @@ def default_config():
         'ip_address': '192.168.1.73',
         'log_level': 'debug',
         'netmask': '255.255.255.0',
-        'poll_delay': '10',
         'radio_number': '1',
         'SSID': 'your_network_ssid',
         'secret': 'your_network_password',
         'switch_ip': '192.168.1.166',
+        'switch_name': 'ant-switch',
         'web_port': '80',
     }
 
@@ -263,7 +272,7 @@ async def call_api(url, msg, q):
     if upython and logging.should_log(logging.DEBUG):
         free = gc.mem_free()
         alloc = gc.mem_alloc()
-        pct_free = free/(free + alloc) * 100
+        pct_free = free / (free + alloc) * 100
         logging.debug(f'{alloc} allocated, {free} free {pct_free:6.2f}% free.', 'main:call_api')
     t0 = milliseconds()
     try:
@@ -296,14 +305,6 @@ async def call_select_antenna_api(new_antenna, msg, q):
     asyncio.create_task(call_api(url, msg, q))
 
 
-async def call_status_api(param_radio_number, msg, q):
-    if param_radio_number == 1 or param_radio_number == 2:
-        url = b'http://%s/api/status?radio=%d' % (switch_host, param_radio_number)
-    else:
-        url = b'http://%s/api/status' % (switch_host)
-    asyncio.create_task(call_api(url, msg, q))
-
-
 # noinspection PyUnusedLocal
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
@@ -313,7 +314,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 
 # noinspection PyUnusedLocal
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
-    global config, switch_host, switch_poll_delay, radio_number
+    global config, switch_host, switch_name, radio_number
     if verb == HTTP_VERB_GET:
         response = read_config()
         # response.pop('secret')  # do not return the secret
@@ -322,7 +323,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == HTTP_VERB_POST:
         # could look at state of ap_mode, only allow some changes when in ap_mode.
-        ap_mode = config.get('ap_mode', False)
+        ap_mode_param = config.get('ap_mode', False)
         new_config = read_config()
         new_config['ap_mode'] = False  # always save as False
         dirty = False
@@ -397,6 +398,11 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             switch_host = switch_ip.encode()
             new_config['switch_ip'] = switch_ip
             dirty = True
+        switch_name_arg = args.get('switch_name')
+        if switch_name_arg is not None:
+            switch_name = switch_name_arg  # .encode() # FIXME
+            new_config['switch_name'] = switch_name_arg
+            dirty = True
         cfg_auto_on = args.get('auto_on')
         if cfg_auto_on is not None:
             auto_on = cfg_auto_on == 1
@@ -410,18 +416,9 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 dirty = True
             else:
                 errors = True
-        poll_delay = safe_int(args.get('poll_delay'), -1)
-        if poll_delay > 0:
-            if 0 <= poll_delay < 60:
-                switch_poll_delay = poll_delay
-                new_config['poll_delay'] = poll_delay
-                dirty = True
-            else:
-                errors = True
         if not errors:
             if dirty:
                 save_config(new_config)
-                await msgq.put((_MSG_CONFIG_CHANGE, 0))
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
@@ -455,7 +452,6 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/status'
     """
     wants to have message looking like this:
-
     {
         "switch_connected": true,
         "lcd_lines": [
@@ -464,7 +460,6 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
         ],
         "radio_power": false
     }
-
     """
     if False:  # this is not a noticeable improvement to using the dict.
         response = b'{"switch_connected": %s, "lcd_lines": ["%s","%s"],"radio_power": %s}' % (
@@ -585,7 +580,7 @@ async def msg_loop(q):
     global antenna_bands, antenna_names, band_antennae, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
         network_connected, radio_name, radio_power, \
-        switch_connected, switch_timeouts
+        switch_connected, switch_timeouts, udp_timeout_timer
 
     while True:
         msg = await q.get()
@@ -628,12 +623,14 @@ async def msg_loop(q):
             if m1 == 1:  # network is up!
                 logging.info('Network is up!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                 network_connected = True
-                await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
+                if udp_timeout_timer < 0:
+                    udp_timeout_timer = timer_mgr.add_timer(delay=5.0,
+                                                            callback=put_timer_message,
+                                                            arg=(_MSG_UDP_TIMEOUT, (0, 'udp message timeout')),
+                                                            auto_reset=True)
             else:
                 logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                 network_connected = False
-        elif m0 == _MSG_CONFIG_CHANGE:
-            await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             if logging.should_log(logging.INFO):
@@ -660,93 +657,7 @@ async def msg_loop(q):
                     logging.error(msg)
                     await update_ui_page(_RADIO_DATA_PAGE, msg, None)
                     set_inhibit(1)
-        elif m0 == _MSG_STATUS_RESPONSE:  # http status response
-            http_status = m1[0]
-            display_antenna_name = current_antenna_name
-            if http_status == HTTP_STATUS_OK:
-                try:
-                    status_dict = json.loads(m1[1])
-                except Exception as jde:
-                    switch_connected = False
-                    logging.exception('cannot decode json', 'main:msg_loop', jde)
-                    current_antenna = 'json decode problem'
-                else:
-                    switch_timeouts = 0
-                    if not switch_connected:
-                        logging.warning('switch_connected False to True transition', 'main:msg_loop')
-                    switch_connected = True
-                    status_radio_number = status_dict.get('radio_number', -1)
-                    if status_radio_number == radio_number:
-                        current_antenna = status_dict.get('antenna_index', -1)
-                        current_antenna_name = status_dict.get('antenna_name', 'unknown antenna')
-                        if len(band_antennae) > 1:
-                            display_antenna_name = f'{current_antenna_name} +{len(band_antennae) - 1}'
-                        radio_name = status_dict.get('radio_name', 'unknown radio')
-                    elif status_radio_number == -1:
-                        antenna_names = status_dict.get('antenna_names', ['', '', '', '', '', '', '', ''])
-                        antenna_bands = status_dict.get('antenna_bands', [0, 0, 0, 0, 0, 0, 0, 0])
-                        radio_names = status_dict.get('radio_names', ['unknown radio', 'unknown radio'])
-                        if radio_number == 1 or radio_number == 2:
-                            radio_name = radio_names[radio_number - 1]
-                        else:
-                            radio_name = f'unknown radio {radio_number}'
-                        current_antenna = -1
-                        if radio_number == 1:
-                            current_antenna = status_dict.get('radio_1_antenna', -1)
-                        elif radio_number == 2:
-                            current_antenna = status_dict.get('radio_2_antenna', -1)
-                        if current_antenna == 0:
-                            current_antenna_name = "Antenna DISCONNECTED"
-                        elif 1 <= current_antenna <= 8:
-                            current_antenna_name = antenna_names[current_antenna - 1]
-                        else:
-                            current_antenna_name = f'unknown antenna {current_antenna}'
-                    else:
-                        logging.warning(f'weird status_radio_number {status_radio_number}',
-                                        'main:msg_loop:_MSG_STATUS_RESPONSE')
-            elif http_status == _API_STATUS_TIMEOUT:
-                switch_timeouts += 1
-                if logging.should_log(logging.DEBUG):
-                    logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:MSG_STATUS_RESPONSE')
-
-                if switch_timeouts == 2:
-                    switch_connected = False
-                    current_antenna = -1
-                    current_antenna_name = 'No Antenna Switch!'
-            else:
-                logging.warning(f'API call returned HTTP status {http_status} {m1}', 'main:msg_loop')
-
-            await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
-
-            if not radio_power:
-                msg = f'{radio_name} No Power'
-                # if logging.should_log(logging.DEBUG):  # doesn't matter
-                logging.debug(msg, 'main:msg_loop:NoPower')
-                await update_ui_page(_RADIO_DATA_PAGE, msg, None)
-                set_inhibit(1)
-            else:
-                if current_band_number < 1 or current_band_number > 13:
-                    # this does not look like a valid band choice, read the band data again.
-                    band_detector.invalidate()
-                else:
-                    msg = f'{radio_name} {BANDS[current_band_number]}'
-                    await update_ui_page(_RADIO_DATA_PAGE, msg, None)
-                    if current_antenna < 1:
-                        set_inhibit(1)
-                    else:
-                        if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
-                            set_inhibit(0)
-                            if len(band_antennae) > 1:
-                                display_antenna_name = f'{current_antenna_name} +{len(band_antennae) - 1}'
-                            else:
-                                display_antenna_name = current_antenna_name
-                            await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
-                        else:
-                            set_inhibit(1)
-                            # try to get the right band...
-                            await new_band(current_band_number)
         elif m0 == _MSG_ANTENNA_RESPONSE:  # http select antenna response
-            # print(f'm1={m1}')  # FIXME
             http_status = m1[0]
             payload = m1[1].decode().strip()
             if http_status == 0:  # api call failed
@@ -756,7 +667,7 @@ async def msg_loop(q):
                 #                      '12345678901234567890'
                 await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
             elif http_status == HTTP_STATUS_OK:
-                await call_status_api(0, (_MSG_STATUS_RESPONSE, None), msgq)
+                pass  # TODO can this be removed?
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
@@ -773,9 +684,95 @@ async def msg_loop(q):
                                                   (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
             else:  # some other HTTP/status code...
                 logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
-        elif m0 -- _MSG_UDP_RESPONSE:
-            logging.info(f'udp message {m1}', 'main:msg_loop')
-            # FIXME TODO
+        elif m0 == _MSG_UDP_RESPONSE:
+            # logging.debug(f'udp message {m1}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+            if len(m1) == 21:
+                msg_switch_name = m1[SWITCH_NAME_OFFSET]
+                if msg_switch_name == switch_name:  # this is a message for us.
+                    if not switch_connected:
+                        logging.info('switch_connected False to True transition',
+                                     'main:msg_loop:_MSG_UDP_RESPONSE:')
+                    switch_connected = True
+
+                    # reset switch message timer.
+                    if udp_timeout_timer >= 0:
+                        timer_mgr.reset_timer(udp_timeout_timer)
+                    radio_1_antenna = safe_int(m1[RADIO_1_ANTENNA_OFFSET])
+                    radio_2_antenna = safe_int(m1[RADIO_2_ANTENNA_OFFSET])
+                    radio_names = [m1[x + RADIO_NAMES_OFFSET] for x in range(RADIO_NAMES_SIZE)]
+                    antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
+                    antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
+                    # logging.info(f'{radio_1_antenna} {radio_2_antenna} {radio_names} {antenna_names} {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+
+                    if radio_number == 1 or radio_number == 2:
+                        radio_name = radio_names[radio_number - 1]
+                    else:
+                        radio_name = f'unknown radio {radio_number}'
+                    current_antenna = -1
+                    if radio_number == 1:
+                        current_antenna = radio_1_antenna
+                    elif radio_number == 2:
+                        current_antenna = radio_2_antenna
+                    if current_antenna == 0:
+                        current_antenna_name = "Antenna DISCONNECTED"
+                    elif 1 <= current_antenna <= 8:
+                        current_antenna_name = antenna_names[current_antenna - 1]
+                    else:
+                        current_antenna_name = f'unknown antenna {current_antenna}'
+                    if len(band_antennae) > 1:
+                        display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                    else:
+                        display_antenna_name = current_antenna_name
+
+                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
+
+                    if not radio_power:
+                        msg = f'{radio_name} No Power'
+                        # if logging.should_log(logging.DEBUG):  # doesn't matter
+                        logging.debug(msg, 'main:msg_loop:NoPower')
+                        await update_ui_page(_RADIO_DATA_PAGE, msg, None)
+                        set_inhibit(1)
+                    else:
+                        if current_band_number < 1 or current_band_number > 13:
+                            # this does not look like a valid band choice, read the band data again.
+                            band_detector.invalidate()
+                        else:
+                            msg = f'{radio_name} {BANDS[current_band_number]}'
+                            await update_ui_page(_RADIO_DATA_PAGE, msg, None)
+                            if current_antenna < 1:
+                                set_inhibit(1)
+                            else:
+                                if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
+                                    set_inhibit(0)
+                                    if len(band_antennae) > 1:
+                                        display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                                    else:
+                                        display_antenna_name = current_antenna_name
+                                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
+                                else:
+                                    set_inhibit(1)
+                                    # try to get the right band...
+                                    await new_band(current_band_number)
+
+                else:
+                    logging.warning(f'unexpected msg_switch_name {msg_switch_name}, want switch_name {switch_name}',
+                                    'main:msg_loop:_MSG_UDP_RESPONSE')
+            else:
+                logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
+                              'main:msg_loop:_MSG_UDP_RESPONSE')
+        elif m0 == _MSG_UDP_TIMEOUT:
+            switch_timeouts += 1
+            if logging.should_log(logging.DEBUG):
+                logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:MSG_STATUS_RESPONSE')
+            if switch_timeouts == 1:
+                if switch_connected:
+                    logging.warning('switch_connected True to False transition',
+                                    'main:msg_loop:_MSG_UDP_RESPONSE:')
+                switch_connected = False
+                current_antenna = -1
+                current_antenna_name = 'No Antenna Switch!'
+                display_antenna_name = current_antenna_name
+                await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
         else:
             logging.error(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
         dt = milliseconds() - t0
@@ -797,16 +794,14 @@ async def net_msg_func(message: str, msg_status=0) -> None:
         await msgq.put((_MSG_NETWORK_UPDOWN, 1))
 
 
-async def poll_switch():
-    while True:
-        if network_connected:
-            await call_status_api(radio_number, (_MSG_STATUS_RESPONSE, None), msgq)
-        if switch_poll_delay > 0:
-            await asyncio.sleep(switch_poll_delay)
+async def put_timer_message(msg):
+    if logging.should_log(logging.INFO):
+        logging.info(f'put timer message: {msg}')
+    await msgq.put(msg)
 
 
 async def main():
-    global keep_running, config, restart, radio_number, switch_host, switch_poll_delay
+    global ap_mode, keep_running, config, restart, radio_number, switch_host, switch_name
     config = read_config()
     if len(config) == 0:
         # create default configuration
@@ -823,7 +818,7 @@ async def main():
     radio_number = config.get('radio_number', -1)
     auto_on = config.get('auto_on', False)
     switch_host = config.get('switch_ip', 'localhost').encode()
-    switch_poll_delay = safe_int(config.get('poll_delay') or 10, 10)
+    switch_name = config.get('switch_name', 'switch-name')  # .encode()  # FIXME
     ap_mode = config.get('ap_mode', False)
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
@@ -837,11 +832,9 @@ async def main():
         #    _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, long_messages=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
-        _switch_poller_task = asyncio.create_task(poll_switch())
     else:
         picow_network = None
         _msg_loop_task = None
-        _switch_poller_task = None
 
     http_server = HttpServer(content_dir=CONTENT_DIR)
     http_server.add_uri_callback(b'/', slash_callback)
@@ -864,27 +857,28 @@ async def main():
     ten_count = 0
     sleep_ms = asyncio.sleep_ms
     while keep_running:
-        await sleep_ms(100) # asyncio.sleep(1.0)
+        await sleep_ms(100)  # asyncio.sleep(1.0)
         ten_count += 1
         if ten_count == 10:
             ten_count = 0
-            if picow_network is not None and picow_network.is_connected() and not time_set:
-                get_ntp_time()
-                if time.time() > 1700000000:
-                    time_set = True
+            if picow_network is not None and picow_network.is_connected():
+                if not time_set:
+                    get_ntp_time()
+                    if time.time() > 1700000000:
+                        time_set = True
 
-            if picow_network is not None and picow_network.is_connected() and receive_broadcasts is None:
-                ip_address = picow_network.get_ip_address()
-                netmask = picow_network.get_netmask()
-                broadcast_address = udp_messages.calculate_broadcast_address(ip_address, netmask)
-                receive_broadcasts = udp_messages.ReceiveBroadcasts(receive_ip=broadcast_address,
-                                                                    receive_port=65073,
-                                                                    config=config,
-                                                                    message_queue=msgq,
-                                                                    message_id = _MSG_UDP_RESPONSE)
-                broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
+                if receive_broadcasts is None:
+                    ip_address = picow_network.get_ip_address()
+                    netmask = picow_network.get_netmask()
+                    broadcast_address = calculate_broadcast_address(ip_address, netmask)
+                    receive_broadcasts = ReceiveBroadcasts(receive_ip=broadcast_address,
+                                                           receive_port=65073,
+                                                           config=config,
+                                                           message_queue=msgq,
+                                                           message_id=_MSG_UDP_RESPONSE)
+                    broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
 
-            if auto_power_timer > 0:
+            if auto_power_timer > 0:  # TODO FIXME use the new timer_manager to auto-start the radio
                 auto_power_timer -= 1
                 if auto_power_timer == 0:
                     if not radio_power:
