@@ -768,6 +768,7 @@ async def msg_loop(q):
                 if switch_connected:
                     logging.warning('switch_connected True to False transition',
                                     'main:msg_loop:_MSG_UDP_RESPONSE:')
+                set_inhibit(1)
                 switch_connected = False
                 current_antenna = -1
                 current_antenna_name = 'No Antenna Switch!'
