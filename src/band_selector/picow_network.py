@@ -3,9 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.93.2'  # derived from '0.9.93'  # 2025-08-09
-#
-# this experimental version wants to try to ping the gateway.
+__version__ = '0.9.93'  # 2025-07-28
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -38,7 +36,6 @@ if upython:
     import network
     # noinspection PyUnresolvedReferences
     import micro_logging as logging
-    from uping import ping
 else:
     import logging
 
@@ -167,7 +164,8 @@ class PicowNetwork:
             mac_addr = self._wlan.config('mac')
             mac = ''
             if mac_addr is not None:
-                mac = ''.join([f'{b:02x}' for b in mac_addr])
+                for b in mac_addr:
+                    mac = mac + f'{b:02x}'
                 if len(mac) == 12:
                     self._default_ssid = self._default_ssid + '-' + mac[6:]
             self._wlan.config(ssid=self._default_ssid, key=self._default_secret, security=security)
@@ -234,10 +232,12 @@ class PicowNetwork:
                     if scan_rssi > best_rssi:
                         best_rssi = scan_rssi
                         bssid = result[1]
-            if bssid is not None and logging.should_log(logging.DEBUG):
-                bssid_str = ''.join([f'{b:02x}' for b in bssid])
-                logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
-                'PicowNetwork:connect_to_network')
+            bssid_str = ''
+            for b in bssid:
+                bssid_str += f'{b:02x}'
+
+            logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
+                          'PicowNetwork:connect_to_network')
 
             if not self._is_dhcp:
                 if self._ip_address is not None and self._netmask is not None and self._gateway is not None and self._dns_server is not None:
@@ -393,23 +393,6 @@ class PicowNetwork:
                 s.close()
                 s = None
 
-    def can_ping_gateway(self):
-        if self._connected:
-            ifconfig = self.ifconfig()
-            if ifconfig is not None:
-                gateway_ip = ifconfig[2]
-                try:
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug(f'trying ping to {gateway_ip}', 'PicowNetwork:can_ping_router')
-                    tx, rx = ping(gateway_ip, count=1, size=0)
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug(f'ping of {gateway_ip} sent {tx} received {rx}', 'PicowNetwork:can_ping_router')
-                    return tx == rx
-                except Exception as exc:
-                    logging.error(f'ping failed: {exc}', 'PicowNetwork:can_ping_router')
-                    return False
-        return False
-
     async def keep_alive(self):
         self._keepalive = True
         sleep = asyncio.sleep
@@ -417,15 +400,6 @@ class PicowNetwork:
             connected = self._connected
             if logging.should_log(logging.DEBUG):
                 logging.debug(f'self._connected = {connected}', 'PicowNetwork.keepalive')
-
-            if connected:
-                if not self._access_point_mode:
-                    gateway_pingable = self.can_ping_gateway()
-                    if not gateway_pingable:
-                        logging.warning('ping failed, attempting reconnect', 'PicowNetwork:keep_alive')
-                        connected = False
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
 
             if not connected:
                 logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')

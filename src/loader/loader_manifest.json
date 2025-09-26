@@ -16,7 +16,6 @@
     "timer_manager.py",
     "uaiohttpclient.py",
     "udp_messages.py",
-    "uping.py",
     "utils.py",
     "watchdog.py",
     "content/favicon.ico",
