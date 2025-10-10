@@ -22,12 +22,16 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.9.1'
+__version__ = '0.9.2'
 
 import sys
 import time
 
 upython = sys.implementation.name == 'micropython'
+if upython:
+    import micropython
+else:
+    pass
 
 BITS = bytes([0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4])
 
@@ -41,7 +45,8 @@ def milliseconds():
     return time.ticks_ms() if upython else int(time.time() * 1000)
 
 
-def safe_int(value, default=-1):
+@micropython.native
+def safe_int(value, default:int=-1) -> int:
     if value is None:
         return default
     if isinstance(value, int):
@@ -52,6 +57,7 @@ def safe_int(value, default=-1):
         return default
 
 
+@micropython.native
 def num_bits_set(n: int) -> int:
     #       0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1111
     nn = n

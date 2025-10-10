@@ -1,6 +1,6 @@
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
@@ -27,6 +27,7 @@ __version__ = '0.1.3'
 
 from asyncio import (create_task, sleep_ms)
 from machine import Pin
+import micropython
 
 class Button:
     __slots__ = ('_pin', '_queue', '_short_msg', '_long_msg', '_last', '_timer')
@@ -44,6 +45,7 @@ class Button:
         self._timer = 0
         create_task(self._edge_checker())
 
+    @micropython.native
     async def _edge_checker(self):
         while True: # runs forever -- must await
             latest = self._pin.value()

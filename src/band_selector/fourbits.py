@@ -1,6 +1,6 @@
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -26,6 +26,7 @@ __version__ = '0.1.1'
 
 from asyncio import (create_task, sleep_ms)
 from machine import Pin
+import micropython
 
 class FourBits:
     __slots__ = ('_debounce_ms', '_pins', '_queue', '_base_msg', '_last')
@@ -48,6 +49,7 @@ class FourBits:
     def invalidate(self):
         self._last = None
 
+    @micropython.native
     async def _bits_checker(self):
         debounce_ms = self._debounce_ms
         msg_type = self._base_msg[0]

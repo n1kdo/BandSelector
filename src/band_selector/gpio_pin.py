@@ -1,6 +1,6 @@
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
@@ -27,6 +27,7 @@ __version__ = '0.1.1'
 
 from asyncio import (create_task, sleep_ms)
 from machine import Pin
+import micropython
 
 
 class GPIO_Pin:
@@ -43,6 +44,7 @@ class GPIO_Pin:
         self._last = None # always send an event after init.
         create_task(self._edge_checker())
 
+    @micropython.native
     async def _edge_checker(self):
         pin_value = self._pin.value  # Cache method lookup
         queue_put = self._queue.put

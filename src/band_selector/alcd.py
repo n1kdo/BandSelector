@@ -24,13 +24,21 @@ __version__ = '0.1.2'
 # Author : Matt Hawkins
 # Site   : http://www.raspberrypi-spy.co.uk
 
+import sys
+upython = sys.implementation.name == 'micropython'
+
 import asyncio
 
 # noinspection PyUnresolvedReferences
 from time import (sleep_ms, sleep_us)
 
-# noinspection PyUnresolvedReferences
-from machine import Pin
+if upython:
+    # noinspection PyUnresolvedReferences
+    from machine import Pin
+    import micropython
+else:
+    def const(i):  # support micropython const() in cpython
+        return i
 
 
 # ********************************** GLOBAL CONSTANTS: TARGET BOARD PIN NUMBERS *************************************
@@ -84,6 +92,7 @@ class LCD:  # LCD objects appear as read/write lists
             self._initialising = False  # Long delay after first byte only
         asyncio.create_task(self.update_lcd())
 
+    @micropython.native
     def lcd_nybble(self, bits):  # send the LS 4 bits
         for pin in self._datapins:
             pin.value(bits & 0x01)
@@ -97,11 +106,13 @@ class LCD:  # LCD objects appear as read/write lists
         else:
             sleep_us(LCD.E_DELAY)  # 50μs
 
+    @micropython.native
     def lcd_byte(self, bits, mode):  # Send byte to data pins: bits = data
         self._LCD_RS.value(mode)  # mode = True  for character, False for command
         self.lcd_nybble(bits >> 4)  # send high bits
         self.lcd_nybble(bits)  # then low ones
 
+    @micropython.native
     def __setitem__(self, line, message):  # Send string to display line 0 or 1
         message = "{0:{1}.{1}}".format(message, self._cols)
         if message != self._lines[line]:  # Only update LCD if data has changed
@@ -111,6 +122,7 @@ class LCD:  # LCD objects appear as read/write lists
     def __getitem__(self, line):
         return self._lines[line]
 
+    @micropython.native
     async def update_lcd(self):
         asleep_ms = asyncio.sleep_ms
         # Periodically check for changed text and update LCD if so
