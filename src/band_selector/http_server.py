@@ -23,18 +23,16 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 import gc
 import json
 import os
 import re
+import micro_logging as logging
 
 from utils import milliseconds, safe_int, upython
-if upython:
-    import micro_logging as logging
-else:
-    import logging
+if not upython:
     def const(i):
         return i
 
@@ -209,7 +207,7 @@ class HttpServer:
         if len(pieces) != 3:  # does the http request line look approximately correct?
             http_status = HTTP_STATUS_BAD_REQUEST
             response = b'Bad Request !=3'
-            logging.warning('Bad request, wrong number of pieces')
+            logging.warning(f'Bad request, wrong number of pieces: {pieces}')
             bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response)
         else:
             verb = pieces[0]
