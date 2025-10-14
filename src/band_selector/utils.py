@@ -30,8 +30,7 @@ import time
 upython = sys.implementation.name == 'micropython'
 if upython:
     import micropython
-else:
-    pass
+
 
 BITS = bytes([0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4])
 
