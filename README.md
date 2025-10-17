@@ -11,6 +11,9 @@ How is it different from commercial-off-the-shelf solutions?
   the 15-pin accessory connector, and supply DC to the coaxial
   power jack. 
 * Automatic TX Inhibit prevents TX into wrong/no antenna.
+* Automatic power-up of K3 and K4 radios using accessory connector pin.  10 seconds after
+  the Band Selector, it will power on the radio.  This is useful since the Band Selector
+  &quot;uses up&quot; the second output of the 15-pin Y-cable between the radio and amp.
 * Cheap cheap compared to existing commercial solutions. 
   About $77 for each band selector, if you build one or two yourself.
   (Circuit boards come in threes from Oshpark.)
@@ -44,6 +47,10 @@ This repository contains the hardware and software for The Band Selector:
   * `kicad` folder contains the electronic design.
   * `src` folder contains the software.
   * [Bill of Materials](BOM.md "Bill of Materials")
+
+# Ecosystem
+
+![Band Selector Ecosystem](images/antenna-switching-ecosystem.png "Antenna Switching Ecosystem") Antenna Switching Ecosystem
 
 ## Setup
 
@@ -84,3 +91,6 @@ _except as where noted._
 The hardware is licensed under terms of the 
 [Creative Commons Attribution-ShareAlike 4.0 
 International Public License.](Hardware-License.md)
+
+
+20251016 n1kdo
