@@ -3,7 +3,8 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.93'  # 2025-07-28
+__version__ = '0.9.95'  # 2025-10-16
+#
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -27,6 +28,9 @@ __version__ = '0.9.93'  # 2025-07-28
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import asyncio
+import socket
+import micro_logging as logging
 from utils import upython
 
 if upython:
@@ -34,13 +38,7 @@ if upython:
     import machine
     # noinspection PyUnresolvedReferences,PyPackageRequirements
     import network
-    # noinspection PyUnresolvedReferences
-    import micro_logging as logging
-else:
-    import logging
 
-import asyncio
-import socket
 
 class PicowNetwork:
     network_status_map = {
@@ -116,7 +114,6 @@ class PicowNetwork:
         network.country('US')
         network.ipconfig(prefer=4)  # this is an IPv4 network
         sleep = asyncio.sleep
-        sleep_ms = asyncio.sleep_ms
         wl_status = 0
         self._connected = False
 
@@ -179,7 +176,7 @@ class PicowNetwork:
                 await self.set_message('Connecting to WLAN...')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.WLAN.IF_STA)
-            sleep_ms(500)
+            await sleep(0.5)
             logging.debug('Connecting to WLAN...1', 'PicowNetwork:connect_to_network')
 
             if self._wlan.isconnected():
@@ -211,7 +208,7 @@ class PicowNetwork:
             self._wlan.active(True)
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
-            await sleep_ms(100)
+            await sleep(0.1)
 
             scan_results = self._wlan.scan()
             logging.debug('Connecting to WLAN...7', 'PicowNetwork:connect_to_network')
@@ -282,7 +279,7 @@ class PicowNetwork:
                 else:
                     await self.set_message('ERROR ', -wl_status)
                 return None
-            await sleep_ms(500)
+            await sleep(0.5)
 
         logging.info(f'...connected: {self._wlan.ipconfig('addr4')}', 'PicowNetwork:connect_to_network')
         onboard.on()  # turn on the LED, WAN is up.
@@ -375,29 +372,36 @@ class PicowNetwork:
         if not self._connected:
             return False
         s = None
+        result = False
+        router_ip = None
         try:
             router_ip = self._wlan.ifconfig()[2]
+            if logging.should_log(logging.DEBUG):
+                logging.debug(f'has_router testing IP {router_ip}', 'PicowNetwork:has_router')
             addr = socket.getaddrinfo(router_ip, 80)[0][-1]
             s = socket.socket()
             s.connect(addr)
             s.send(b'GET / HTTP/1.1\r\n\r\n')
             data = s.recv(128)
             if data is not None and len(data) > 0:
-                # print(f'got some data: "{str(data)}".')
-                return True
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'got some data: "{str(data)}".', 'PicowNetwork:has_router')
+                result = True
         except Exception as exc:
-            logging.error(f'cannot lookup or connect to router: {exc}')
-            return False
+            logging.error(f'cannot lookup or connect to router: {exc}', 'PicowNetwork:has_router')
         finally:
             if s is not None:
                 s.close()
                 s = None
+        if logging.should_log(logging.DEBUG):
+            logging.debug(f'has_router testing IP {router_ip} result={result}', 'PicowNetwork:has_router')
+        return result
 
     async def keep_alive(self):
         self._keepalive = True
         sleep = asyncio.sleep
         while self._keepalive:
-            connected = self._connected
+            connected = self.has_router()
             if logging.should_log(logging.DEBUG):
                 logging.debug(f'self._connected = {connected}', 'PicowNetwork.keepalive')
 
