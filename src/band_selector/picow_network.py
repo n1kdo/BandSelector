@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.95'  # 2025-10-16
+__version__ = '0.9.96'  # 2025-10-20
 #
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
@@ -42,13 +42,13 @@ if upython:
 
 class PicowNetwork:
     network_status_map = {
-        network.STAT_IDLE:           'not connected',  # 0
-        network.STAT_CONNECTING:     'connecting...',  # 1
-        network.STAT_CONNECTING + 1: 'connected no IP addr',  # 2, this is undefined, but returned.
-        network.STAT_GOT_IP:         'connection successful',  # 3
-        network.STAT_WRONG_PASSWORD: 'failed, bad password',  # -3
-        network.STAT_NO_AP_FOUND:    'failed no AP replied',  # -2
-        network.STAT_CONNECT_FAIL:   'failed other problem',  # -1
+        network.STAT_IDLE:           'not connected',  # 0  CYW43_LINK_DOWN
+        network.STAT_CONNECTING:     'connecting...',  # 1  CYW43_LINK_JOIN
+        network.STAT_CONNECTING + 1: 'connected no IP addr',  # 2  CYW43_LINK_NOIP
+        network.STAT_GOT_IP:         'connection successful',  # 3 CYW43_LINK_UP
+        network.STAT_WRONG_PASSWORD: 'failed, bad password',  # -3 CYW43_LINK_FAIL
+        network.STAT_NO_AP_FOUND:    'failed no AP replied',  # -2 CYW43_LINK_NONET
+        network.STAT_CONNECT_FAIL:   'failed other problem',  # -1 CYW43_LINK_FAIL
     }
 
     def __init__(self,
@@ -146,17 +146,12 @@ class PicowNetwork:
                     await self.set_message('ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
 
-            #
-            #define CYW43_AUTH_OPEN (0)                     ///< No authorisation required (open)
-            #define CYW43_AUTH_WPA_TKIP_PSK   (0x00200002)  ///< WPA authorisation
-            #define CYW43_AUTH_WPA2_AES_PSK   (0x00400004)  ///< WPA2 authorisation (preferred)
-            #define CYW43_AUTH_WPA2_MIXED_PSK (0x00400006)  ///< WPA2/WPA mixed authorisation
-            #
-
+            # security choices are 'SEC_OPEN', 'SEC_WPA2_WPA3', 'SEC_WPA3', 'SEC_WPA_WPA2'
+            # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L584
             if len(self._secret) == 0:
-                security = 0
+                security = network.WLAN.SEC_OPEN
             else:
-                security = 0x00400004  # CYW43_AUTH_WPA2_AES_PSK
+                security = network.WLAN.SEC_WPA2_WPA3  # CYW43_AUTH_WPA2_AES_PSK
 
             mac_addr = self._wlan.config('mac')
             mac = ''
