@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.13'
+__version__ = '0.1.14'  # 2025-10-18
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -40,10 +40,6 @@ from button import Button
 from fourbits import FourBits
 from gpio_pin import GPIO_Pin
 from http_server import (HttpServer,
-                         api_rename_file_callback,
-                         api_remove_file_callback,
-                         api_upload_file_callback,
-                         api_get_files_callback,
                          HTTP_STATUS_OK,
                          HTTP_STATUS_BAD_REQUEST,
                          HTTP_VERB_GET,
@@ -76,6 +72,7 @@ BANDS = ('NoBand', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M
          'NoBand')
 MASKS = (0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,
          0x0000, 0x0000)
+# noinspection PyUnboundLocalVariable
 _MIN_BAND = const(1)
 _MAX_BAND = const(13)
 
@@ -200,6 +197,9 @@ _NETWORK_DATA_PAGE = const(1)
 ui_page = _RADIO_DATA_PAGE
 current_antenna_list_index = 0
 
+# http server
+http_server = HttpServer(content_dir=CONTENT_DIR)
+
 
 def select_restart_mode(mode):
     global restart, keep_running
@@ -306,6 +306,7 @@ async def call_select_antenna_api(new_antenna, msg, q):
 
 
 # noinspection PyUnusedLocal
+@http_server.route(b'/')
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = 301
     bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /status.html'])
@@ -313,6 +314,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 
 
 # noinspection PyUnusedLocal
+@http_server.route(b'/api/config')
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     global config, switch_host, switch_name, radio_number
     if verb == HTTP_VERB_GET:
@@ -435,6 +437,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
 
 
 # noinspection PyUnusedLocal
+@http_server.route(b'/api/restart')
 async def api_restart_callback(http, verb, args, reader, writer, request_headers=None):
     global keep_running
     if upython:
@@ -449,6 +452,7 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
     return bytes_sent, http_status
 
 
+@http_server.route(b'/api/status')
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/status'
     """
     wants to have message looking like this:
@@ -461,19 +465,15 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
         "radio_power": false
     }
     """
-    if False:  # this is not a noticeable improvement to using the dict.
-        response = b'{"switch_connected": %s, "lcd_lines": ["%s","%s"],"radio_power": %s}' % (
-            b'true' if switch_connected else b'false', lcd[0], lcd[1], b'true' if radio_power else b'false')
-    else:
-        response = {'lcd_lines': [lcd[0], lcd[1]],
-                    'radio_power': radio_power,
-                    'switch_connected': switch_connected,
-                    }
+    response = {'lcd_lines': [lcd[0], lcd[1]],
+                'radio_power': radio_power,
+                'switch_connected': switch_connected,
+                }
     http_status = HTTP_STATUS_OK
     bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
-
+@http_server.route(b'/api/power_on_radio')
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
     # send the status response message
@@ -486,7 +486,7 @@ async def api_power_on_radio_callback(http, verb, args, reader, writer, request_
     return bytes_sent, http_status
 
 
-def find_band_antennae(new_band_number: int) -> [int]:
+def find_band_antennae(new_band_number: int):
     antennas = []
     mask = MASKS[new_band_number]
     bands = 1
@@ -836,17 +836,6 @@ async def main():
     else:
         picow_network = None
         _msg_loop_task = None
-
-    http_server = HttpServer(content_dir=CONTENT_DIR)
-    http_server.add_uri_callback(b'/', slash_callback)
-    http_server.add_uri_callback(b'/api/config', api_config_callback)
-    http_server.add_uri_callback(b'/api/get_files', api_get_files_callback)
-    http_server.add_uri_callback(b'/api/upload_file', api_upload_file_callback)
-    http_server.add_uri_callback(b'/api/remove_file', api_remove_file_callback)
-    http_server.add_uri_callback(b'/api/rename_file', api_rename_file_callback)
-    http_server.add_uri_callback(b'/api/restart', api_restart_callback)
-    http_server.add_uri_callback(b'/api/status', api_status_callback)
-    http_server.add_uri_callback(b'/api/power_on_radio', api_power_on_radio_callback)
 
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))

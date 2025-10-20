@@ -37,6 +37,7 @@ if not upython:
         return i
 
 # these are the HTTP responses that will be sent.
+# noinspection PyUnboundLocalVariable
 HTTP_STATUS_OK = const(200)
 HTTP_STATUS_CREATED = const(201)
 HTTP_STATUS_BAD_REQUEST = const(400)
@@ -100,14 +101,23 @@ class HttpServer:
     def __init__(self, content_dir):
         self.content_dir = content_dir
         self.uri_map = {}
+        self.uri_map[b'/api/get_files'] = api_get_files_callback
+        self.uri_map[b'/api/upload_file'] = api_upload_file_callback
+        self.uri_map[b'/api/remove_file'] = api_remove_file_callback
+        self.uri_map[b'/api/rename_file'] = api_rename_file_callback
+
         self.buffer = bytearray(_BUFFER_SIZE)
         self.bmv = memoryview(self.buffer)
 
-    def add_uri_callback(self, uri, callback):
+    def route(self, uri):
         if isinstance(uri, str):
             logging.warning(f'uri {uri} is str not bytes', 'http_server:add_uri_callback')
             uri = uri.encode('utf-8')
-        self.uri_map[uri] = callback
+
+        def decorator(func):
+            self.uri_map[uri] = func
+            return func
+        return decorator
 
     async def serve_content(self, writer, filename):
         filename = self.content_dir + filename
@@ -125,12 +135,21 @@ class HttpServer:
         await self.start_response(writer, HTTP_STATUS_OK, content_type, content_length)
         try:
             with open(filename, 'rb', _BUFFER_SIZE) as infile:
+                bytes_since_drain = 0
+                # Drain after roughly 16 KB or at EOF to reduce syscall overhead while preventing buffer bloat.
+                DRAIN_THRESHOLD = _BUFFER_SIZE * 4
                 while True:
                     bytes_read = infile.readinto(self.buffer)
                     if bytes_read:
                         writer.write(self.bmv[:bytes_read])
-                        await writer.drain()
+                        bytes_since_drain += bytes_read
+                        if bytes_since_drain >= DRAIN_THRESHOLD:
+                            await writer.drain()
+                            bytes_since_drain = 0
                     if bytes_read < _BUFFER_SIZE:
+                        # EOF reached; ensure pending bytes are flushed.
+                        if bytes_since_drain:
+                            await writer.drain()
                         break
         except Exception as exc:
             logging.error(f'{type(exc)} {exc}', 'http_server:serve_content')
@@ -290,8 +309,6 @@ class HttpServer:
 #
 # common file operations callbacks, here because just about every app will use them...
 #
-
-
 def valid_filename(filename):
     if filename is None:
         return False
