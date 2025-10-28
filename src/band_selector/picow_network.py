@@ -3,8 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.96'  # 2025-10-20
-#
+__version__ = '0.9.98'  # 2025-10-28
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -156,8 +155,7 @@ class PicowNetwork:
             mac_addr = self._wlan.config('mac')
             mac = ''
             if mac_addr is not None:
-                for b in mac_addr:
-                    mac = mac + f'{b:02x}'
+                mac = ''.join([f'{b:02x}' for b in mac_addr])
                 if len(mac) == 12:
                     self._default_ssid = self._default_ssid + '-' + mac[6:]
             self._wlan.config(ssid=self._default_ssid, key=self._default_secret, security=security)
@@ -205,15 +203,15 @@ class PicowNetwork:
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
             await sleep(0.1)
 
-            scan_results = self._wlan.scan()
+            # scan ssid option is not documented.  Using it here to reduce the result set size
+            # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L192
+            scan_results = self._wlan.scan(ssid=self._ssid)
             logging.debug('Connecting to WLAN...7', 'PicowNetwork:connect_to_network')
             bssid = None
             best_rssi = -100
             for result in scan_results:
                 scan_ssid = result[0].decode()
-                scan_bssid = ''
-                for b in result[1]:
-                    scan_bssid += f'{b:02x}'
+                scan_bssid = ''.join([f'{b:02x}' for b in result[1]])
                 scan_channel = result[2]
                 scan_rssi = result[3]
                 scan_security = result[4]
@@ -224,12 +222,12 @@ class PicowNetwork:
                     if scan_rssi > best_rssi:
                         best_rssi = scan_rssi
                         bssid = result[1]
-            bssid_str = ''
-            for b in bssid:
-                bssid_str += f'{b:02x}'
-
-            logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
-                          'PicowNetwork:connect_to_network')
+            if bssid is not None:
+                bssid_str = ''.join([f'{b:02x}' for b in bssid])
+                logging.debug(f'Found best RSSI for SSID "{self._ssid}" on BSSID "{bssid_str}" RSSI {best_rssi}',
+                              'PicowNetwork:connect_to_network')
+            else:
+                logging.info('cannot find SSID in scan', 'PicowNetwork:connect_to_network')
 
             if not self._is_dhcp:
                 if self._ip_address is not None and self._netmask is not None and self._gateway is not None and self._dns_server is not None:
@@ -250,7 +248,10 @@ class PicowNetwork:
             if self._long_messages:
                 await self.set_message(f'Connecting to\n{self._ssid}')
             try:
-                self._wlan.connect(self._ssid, self._secret, bssid=bssid)
+                if bssid is not None:
+                    self._wlan.connect(self._ssid, self._secret, bssid=bssid)
+                else:
+                    self._wlan.connect(self._ssid, self._secret)
             except OSError as ose:
                 logging.exception('got exception on wlan.connect', 'PicowNetwork:connect_to_network', ose)
             logging.info(f'...connecting to "{self._ssid}"...', 'PicowNetwork:connect_to_network')
@@ -396,9 +397,12 @@ class PicowNetwork:
         self._keepalive = True
         sleep = asyncio.sleep
         while self._keepalive:
-            connected = self.has_router()
+            if not self._access_point_mode:
+                connected = self.has_router()
+            else:
+                connected = self._connected
             if logging.should_log(logging.DEBUG):
-                logging.debug(f'self._connected = {connected}', 'PicowNetwork.keepalive')
+                logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
 
             if not connected:
                 logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
