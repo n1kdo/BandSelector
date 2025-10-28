@@ -691,7 +691,7 @@ async def msg_loop(q):
                 if msg_switch_name == switch_name:  # this is a message for us.
                     if not switch_connected:
                         logging.info('switch_connected False to True transition',
-                                     'main:msg_loop:_MSG_UDP_RESPONSE:')
+                                     'main:msg_loop:_MSG_UDP_RESPONSE')
                     switch_connected = True
 
                     # reset switch message timer.
