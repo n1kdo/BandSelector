@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.98'  # 2025-10-28
+__version__ = '0.9.98'  # 2025-10-29
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -203,7 +203,7 @@ class PicowNetwork:
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
             await sleep(0.1)
 
-            # scan ssid option is not documented.  Using it here to reduce the result set size
+            # scan ssid option is not documented.  Using it here to reduce the result set size.
             # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L192
             scan_results = self._wlan.scan(ssid=self._ssid)
             logging.debug('Connecting to WLAN...7', 'PicowNetwork:connect_to_network')
@@ -405,11 +405,13 @@ class PicowNetwork:
                 logging.debug(f'connected = {connected}', 'PicowNetwork.keepalive')
 
             if not connected:
-                logging.warning('not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
+                logging.warning('Not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
                 await self.connect()
                 connected = self._connected
-                logging.info(f'tried to connect, connected = {connected}...', 'PicowNetwork:keep_alive')
-
+                if connected:
+                    logging.info(f'Network connected', 'PicowNetwork:keep_alive')
+                else:
+                    logging.warning(f'Failed to connect', 'PicowNetwork:keep_alive')
             await sleep(30 if connected else 10)  # check network every 30 seconds when connected, every 10 when not.
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
