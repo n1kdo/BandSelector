@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.9.98'  # 2025-10-29
+__version__ = '0.9.99'  # 2025-11-05
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -41,13 +41,13 @@ if upython:
 
 class PicowNetwork:
     network_status_map = {
-        network.STAT_IDLE:           'not connected',  # 0  CYW43_LINK_DOWN
-        network.STAT_CONNECTING:     'connecting...',  # 1  CYW43_LINK_JOIN
-        network.STAT_CONNECTING + 1: 'connected no IP addr',  # 2  CYW43_LINK_NOIP
-        network.STAT_GOT_IP:         'connection successful',  # 3 CYW43_LINK_UP
-        network.STAT_WRONG_PASSWORD: 'failed, bad password',  # -3 CYW43_LINK_FAIL
-        network.STAT_NO_AP_FOUND:    'failed no AP replied',  # -2 CYW43_LINK_NONET
-        network.STAT_CONNECT_FAIL:   'failed other problem',  # -1 CYW43_LINK_FAIL
+        network.STAT_IDLE:           'not connected',          #  0  CYW43_LINK_DOWN
+        network.STAT_CONNECTING:     'connecting...',          #  1  CYW43_LINK_JOIN
+        network.STAT_CONNECTING + 1: 'connected no IP addr',   #  2  CYW43_LINK_NOIP
+        network.STAT_GOT_IP:         'connection successful',  #  3 CYW43_LINK_UP
+        network.STAT_WRONG_PASSWORD: 'failed, bad password',   # -3 CYW43_LINK_FAIL
+        network.STAT_NO_AP_FOUND:    'failed no AP replied',   # -2 CYW43_LINK_NONET
+        network.STAT_CONNECT_FAIL:   'failed other problem',   # -1 CYW43_LINK_FAIL
     }
 
     def __init__(self,
@@ -153,7 +153,6 @@ class PicowNetwork:
                 security = network.WLAN.SEC_WPA2_WPA3  # CYW43_AUTH_WPA2_AES_PSK
 
             mac_addr = self._wlan.config('mac')
-            mac = ''
             if mac_addr is not None:
                 mac = ''.join([f'{b:02x}' for b in mac_addr])
                 if len(mac) == 12:
@@ -388,7 +387,6 @@ class PicowNetwork:
         finally:
             if s is not None:
                 s.close()
-                s = None
         if logging.should_log(logging.DEBUG):
             logging.debug(f'has_router testing IP {router_ip} result={result}', 'PicowNetwork:has_router')
         return result
