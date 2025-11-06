@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.14'  # 2025-10-18
+__version__ = '0.1.15'  # 2025-11-06
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -41,6 +41,7 @@ from fourbits import FourBits
 from gpio_pin import GPIO_Pin
 from http_server import (HttpServer,
                          HTTP_STATUS_OK,
+                         HTTP_STATUS_MOVED_PERMANENTLY,
                          HTTP_STATUS_BAD_REQUEST,
                          HTTP_VERB_GET,
                          HTTP_VERB_POST)
@@ -308,7 +309,7 @@ async def call_select_antenna_api(new_antenna, msg, q):
 # noinspection PyUnusedLocal
 @http_server.route(b'/')
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
-    http_status = 301
+    http_status = HTTP_STATUS_MOVED_PERMANENTLY
     bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /status.html'])
     return bytes_sent, http_status
 
