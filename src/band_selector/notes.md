@@ -1,27 +1,28 @@
-# implement message queue.
+# Implement Message Queue.  (DONE)
   messages drive actions
 
-  message types
+  ## Message types
 
-  buttons 1-4 falling edge: control UI functions.
-  pwrsense change.  can choose to turn on radio.
-  band change.  send to band logic
-  http responses -- valid
-    band request responses
-    information request responses
-  http responses -- failures
-    timeout or unreachable
-  update display, write, home, clear, moveto, cursor on/off, value up/down?
-  timer event
+  * buttons 1-4 falling edge: control UI functions.
+  * pwrsense change.  can choose to turn on radio.
+  * band change.  send to band logic
+  * http responses -- valid
+    * band request responses
+    * information request responses
+  * http responses -- failures
+    * timeout or unreachable
+  * update display, write, home, clear, moveto, cursor on/off, value up/down?
+  * timer event
 
 implement task that reads hardware inputs:
+
 * buttons 1-4 -- either edge
 * PWRSENSE -- either edge
 * band data b0-b3 collectively as 4-bit value 0-F -- send event on edge
+* 
 send message into message queue
 
-implement task that runs async http transaction
-enqueues result
+implement task that runs async http transaction, enqueues result
 
 implement task (?) to update display?  
 do I need this?  all fast except clear and home, they need 5 ms.
@@ -42,8 +43,6 @@ there is such a thing.  In other cases, additional data may be references by
 201 api status response, text in 2nd value of tuple
 202 api select antenna, text in 2nd value of tuple
 1000+: timer events.  
-
-----
 
 # Display update process.
 
@@ -72,41 +71,53 @@ button activity resets timeout,
 but menu change may update display and set timeout
 a timeout reset causes last message (stack or 2-deep?) to be shown.
 
-## Messages:
+## Display Messages:
 
-Network:  display wifi net name and IP address.
+### Network
+
+Display WiFi net name and IP address.
+
 ```
 12345678901234567890
   Free Public Wifi  
     192.168.0.201       
 ```
 
-Radio:  display radio name and Band and Antenna Name
+### Radio
+
+Display radio name and Band and Antenna Name
+
 ```
 12345678901234567890
   Elecraft K3 40M  
   40 Meter Dipole         
 ```
--- add + plus sign after antenna name if there is another antenna available
--- up/down buttons select antenna only when this page is displayed
 
-Activity: other messages:
-nw: "Connecting to WLAN..."
-r: "Unknown Rig No Power"
-nw:"setting hostname / ant-switch"
-nw: "connecting to / fbi surveillance van"
-r.2: Unknown Antenna
-r.2: No Antenna Switch!
+* add + plus sign after antenna name if there is another antenna available... DONE
+  * up/down buttons select antenna only when this page is displayed
 
-Menu:
-can menu go away?  YES DONE
-right now there is an option for station or access point. REMOVED.
--- disable config change of ap_mode. DONE
--- when not in ap_mode, disable config ssid & password write
-    --- exactly how much to disable? hostname? dhcp? dns?
--- use held button at powerup to set ap_mode -- must have access to hardware.
-  hold down switch 1 at power up to select AP/setup mode. DONE.
+### Activity
 
-make config into Config class and encapsulate functions? LATER
+* other messages:  
+  * Network
+     * "Connecting to WLAN..."  
+     * "setting hostname / ant-switch"  
+     * "connecting to / fbi surveillance van"
+  * Radio
+    * "Unknown Rig No Power"  
+    * / Unknown Antenna  
+    * / "No Antenna Switch!" -- cannot reach antenna switch
 
+### Menu:
 
+* can menu go away?  YES DONE  
+* right now there is an option for station or access point. REMOVED.  
+  * disable config change of ap_mode. DONE
+  * when not in ap_mode, disable config ssid & password write  
+    * exactly how much to disable? hostname? dhcp? dns?  
+* use held button at powerup to set ap_mode -- must have access to hardware.
+  * hold down switch 1 at power up to select AP/setup mode. DONE.
+
+### Config
+
+* make config into Config class and encapsulate functions? LATER

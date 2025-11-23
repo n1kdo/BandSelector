@@ -21,7 +21,7 @@ How is it different from commercial-off-the-shelf solutions?
 
 ![Band Selector](images/band-selector.jpg "Band Selector") Band Selector
 
-![With K3](images/with-k3.jpg "Interfaced with K3") Interfaced with K3
+![With K4](images/with-k4.jpg "Interfaced with K4") Interfaced with K4
 
 # How it works
 
@@ -72,7 +72,7 @@ of the front panel will light.
 
 The radios must be configured to accept the inhibit input from the 
 Band Selector.  Instructions for K3 and K4 are below.  The electrical
-interface from the Band Selector is an "open drain" from a 2N7000 MOSFET
+interface from the Band Selector is an "open drain" from a 2N7000 MOSFET.
 
   * On a K3, locate the "TX INH" option in the "CONFIG" menu.  
     Set this option to "LO=Inh".  
@@ -93,4 +93,4 @@ The hardware is licensed under terms of the
 International Public License.](Hardware-License.md)
 
 
-20251016 n1kdo
+20251123 n1kdo
