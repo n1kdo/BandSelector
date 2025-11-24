@@ -50,7 +50,7 @@ This repository contains the hardware and software for The Band Selector:
 
 # Ecosystem
 
-![Band Selector Ecosystem](images/antenna-switching-ecosystem.png "Antenna Switching Ecosystem") Antenna Switching Ecosystem
+![Band Selector Ecosystem](images/Antenna-Switching-20251123.png "Antenna Switching Ecosystem") Antenna Switching Ecosystem
 
 ## Setup
 
