@@ -7,14 +7,14 @@ How is it different from commercial-off-the-shelf solutions?
   data using the Elecraft Y-cable or a device like a Y-box.
   * provides transmit inhibit and power sense/control.
   * it's not designed for other radios.  Tested on Elecraft only.
-* Wireless! It runs over WiFi, connect the band selector to 
+* Wireless! It runs over Wi-Fi, connect the band selector to 
   the 15-pin accessory connector, and supply DC to the coaxial
   power jack. 
 * Automatic TX Inhibit prevents TX into wrong/no antenna.
 * Automatic power-up of K3 and K4 radios using accessory connector pin.  10 seconds after
   the Band Selector, it will power on the radio.  This is useful since the Band Selector
   &quot;uses up&quot; the second output of the 15-pin Y-cable between the radio and amp.
-* Cheap cheap compared to existing commercial solutions. 
+* Inexpensive (relatively) compared to existing commercial solutions. 
   About $77 for each band selector, if you build one or two yourself.
   (Circuit boards come in threes from Oshpark.)
 * Open Source Hardware and Software.  Do what you will with attribution.
@@ -50,7 +50,7 @@ This repository contains the hardware and software for The Band Selector:
 
 # Ecosystem
 
-![Band Selector Ecosystem](images/Antenna-Switching-20251123.png "Antenna Switching Ecosystem") Antenna Switching Ecosystem
+![Band Selector Ecosystem](images/Antenna-Switching.png "Antenna Switching Ecosystem") Antenna Switching Ecosystem
 
 ## Setup
 
