@@ -15,13 +15,19 @@ How is it different from commercial-off-the-shelf solutions?
 * Automatic power-up of K3 and K4 radios using accessory connector pin.  The
   band selector can be configured to automatically power up a attached K3 or K4 
   10 seconds after the Band Selector powers up.
+* Smart antenna selection based on band.  If you have more than one antenna
+  for a given band, the logic selects the antenna that matches the fewest
+  other bands, which is hopefully the best fit.  If that antenna is in use by
+  the other radio, then it selects the next-best match.  When more than one
+  antenna is available for the given band, the front panel Next/Prev buttons
+  let you select other antennas that support the selected band.
 * Inexpensive (relatively) compared to existing commercial solutions. 
-  About $77 for each band selector, if you build one or two yourself.
+  About 77 USD for each band selector, if you build one or two yourself.
   (Circuit boards come in threes from Oshpark.)  The 
   [Antenna Switch Controller](https://github.com/n1kdo/AntennaSwitchControl) 
-  costs about $106; the most expensive part is the 
+  costs about 106 USD; the most expensive part is the 
   [DXE-RR2X8B 2x8 remote controlled switch](https://www.dxengineering.com/parts/DXE-RR2X8B),
-  which is rather expensive at $669.
+  which is not inexpensive at 669 USD.
 * Open Source Hardware and Software.  Do what you will with attribution.
 
 ![Band Selector](images/band-selector.jpg "Band Selector") Band Selector
