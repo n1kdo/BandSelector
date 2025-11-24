@@ -3,20 +3,25 @@
 This project is intended to operate a remote antenna switch.
 
 How is it different from commercial-off-the-shelf solutions?
-* Direct interface with Elecraft 15-Pin interface. It reads BCD band
-  data using the Elecraft Y-cable or a device like a Y-box.
-  * provides transmit inhibit and power sense/control.
-  * it's not designed for other radios.  Tested on Elecraft only.
+* Direct interface with Elecraft 15-Pin accessory interface. It reads
+  BCD band data using the Elecraft Y-cable or a device like a Y-box.
+  * provides transmit inhibit and power-on sense/control.
+  * it's not designed for other radios.  Tested on Elecraft only. It _should_ 
+    work with other radios that use similar BCD active low band signaling. 
 * Wireless! It runs over Wi-Fi, connect the band selector to 
   the 15-pin accessory connector, and supply DC to the coaxial
   power jack. 
 * Automatic TX Inhibit prevents TX into wrong/no antenna.
-* Automatic power-up of K3 and K4 radios using accessory connector pin.  10 seconds after
-  the Band Selector, it will power on the radio.  This is useful since the Band Selector
-  &quot;uses up&quot; the second output of the 15-pin Y-cable between the radio and amp.
+* Automatic power-up of K3 and K4 radios using accessory connector pin.  The
+  band selector can be configured to automatically power up a attached K3 or K4 
+  10 seconds after the Band Selector powers up.
 * Inexpensive (relatively) compared to existing commercial solutions. 
   About $77 for each band selector, if you build one or two yourself.
-  (Circuit boards come in threes from Oshpark.)
+  (Circuit boards come in threes from Oshpark.)  The 
+  [Antenna Switch Controller](https://github.com/n1kdo/AntennaSwitchControl) 
+  costs about $106; the most expensive part is the 
+  [DXE-RR2X8B 2x8 remote controlled switch](https://www.dxengineering.com/parts/DXE-RR2X8B),
+  which is rather expensive at $669.
 * Open Source Hardware and Software.  Do what you will with attribution.
 
 ![Band Selector](images/band-selector.jpg "Band Selector") Band Selector
@@ -83,6 +88,20 @@ interface from the Band Selector is an "open drain" from a 2N7000 MOSFET.
     When transmit is inhibited, the TX label (top center of display)
     will display "TX Inh".
 
+# User Interface
+
+In addition to the front panel controls (4 buttons and a 2x20 LCD display), the 
+Band Selector has a web UI for configuration and management.
+
+## Band Selector Status Page
+![Status Page](images/band-selector-status.png "Band Selector Status Page")  
+
+## Band Selector Networking Page
+![Network Setup Page](images/band-selector-networking.png "Band Selector Networking Page")  
+
+## Band Selector Configuration Page
+![Status Page](images/band-selector-configuration.png "Band Selector Configuration Page")  
+
 # License
 
 The software is licensed under [BSD "2-Clause" license](Software-License.md), 
@@ -93,4 +112,4 @@ The hardware is licensed under terms of the
 International Public License.](Hardware-License.md)
 
 
-20251123 n1kdo
+20251124 n1kdo
