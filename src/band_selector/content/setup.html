@@ -1,11 +1,8 @@
 <!DOCTYPE html>
-<!--suppress JSUnusedLocalSymbols -->
-<html xmlns="http://www.w3.org/1999/html" lang="en">
-<!-- Copyright 2024, J. B. Otterson N1KDO. -->
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
-        <title>Configure Band Selector</title>
-    </head>
+<html lang="en">
+<!-- Copyright 2024, 2025 J. B. Otterson N1KDO. -->
+<head>
+    <title>Configure Band Selector</title>
     <style>
         .author {
             font-size: 8pt;
@@ -111,7 +108,6 @@
 
     </style>
     <script>
-
         function page_load() {
             get_config();
         }
@@ -123,8 +119,12 @@
                 return;
             }
             xmlHttp.onreadystatechange = function () {
-                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                if (xmlHttp.readyState !== 4)
+                    return;
+                if (xmlHttp.status === 200) {
                     process_get_config_response(xmlHttp.responseText);
+                } else {
+                    alert("Failed to load configuration data.");
                 }
             }
             xmlHttp.open("GET", "/api/config", true);
@@ -132,7 +132,13 @@
         }
 
         function process_get_config_response(message) {
-            let config = JSON.parse(message);
+            let config;
+            try {
+                config = JSON.parse(message);
+            } catch (e) {
+                alert("Invalid configuration data received.");
+                return;
+            }
             document.getElementById("radio_number").value = config.radio_number;
             document.getElementById("auto_on").checked = config.auto_on;
             document.getElementById("switch_ip").value = config.switch_ip;
@@ -172,53 +178,56 @@
             // alert(message);
         }
 
+        document.addEventListener("DOMContentLoaded", page_load);
+
     </script>
-    <body onload="page_load()">
-        <div class="header">Configure Band Selector</div>
-        <div class="setup_form">
-            <form>
-                <p>
-                    <label for="radio_number">Radio Number:</label>
-                    <input type="number" id="radio_number" min="1" max="2">
-                </p>
-                <p>
-                    <label for="auto_on">Radio Auto On:</label>
-                    <input type="checkbox" id="auto_on">
-                </p>
-                <p>
-                    <label for="switch_ip">Switch IP Address:</label>
-                    <input type="text" id="switch_ip" maxlength="15">
-                </p>
-                <p>
-                    <label for="switch_name">Switch Name:</label>
-                    <input type="text" id="switch_name" maxlength="15">
-                </p>
-                <p>
-                    <label for="log_level">Log Level:</label>
-                    <select id="log_level">
-                        <option value="DEBUG">Debug</option>
-                        <option value="INFO">Info</option>
-                        <option value="WARNING">Warning</option>
-                        <option value="ERROR">Error</option>
-                        <option value="CRITICAL">Critical</option>
-                        <option value="NONE">None</option>
-                    </select>
-                </p>
-            </form>
-            <div class="centered">
-                <input type="button" id="reset_button" value="Reset" title="Reload Configuration"
-                       onclick="get_config()"/>
-                <input type="button" id="apply_button" value="Apply" title="Save Configuration" onclick="set_config()"/>
-            </div>
-        </div>
-        <div class="row">
-            <div class="bottom_links">
-                <a href="status.html">Status</a>
-                <span class="selected">Setup</span>
-                <a href="network.html">Network</a>
-                <a href="files.html">Files</a>
-            </div>
-            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20250923</div>
-        </div>
-    </body>
+</head>
+<body>
+<div class="header">Configure Band Selector</div>
+<div class="setup_form">
+    <form>
+        <p>
+            <label for="radio_number">Radio Number:</label>
+            <input type="number" id="radio_number" min="1" max="2">
+        </p>
+        <p>
+            <label for="auto_on">Radio Auto On:</label>
+            <input type="checkbox" id="auto_on">
+        </p>
+        <p>
+            <label for="switch_ip">Switch IP Address:</label>
+            <input type="text" id="switch_ip" maxlength="15">
+        </p>
+        <p>
+            <label for="switch_name">Switch Name:</label>
+            <input type="text" id="switch_name" maxlength="15">
+        </p>
+        <p>
+            <label for="log_level">Log Level:</label>
+            <select id="log_level">
+                <option value="DEBUG">Debug</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="NONE">None</option>
+            </select>
+        </p>
+    </form>
+    <div class="centered">
+        <input type="button" id="reset_button" value="Reset" title="Reload Configuration"
+               onclick="get_config()"/>
+        <input type="button" id="apply_button" value="Apply" title="Save Configuration" onclick="set_config()"/>
+    </div>
+</div>
+<div class="row">
+    <div class="bottom_links">
+        <a href="status.html">Status</a>
+        <span class="selected">Setup</span>
+        <a href="network.html">Network</a>
+        <a href="files.html">Files</a>
+    </div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20251222</div>
+</div>
+</body>
 </html>

@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <!--suppress JSUnusedLocalSymbols -->
-<html xmlns="http://www.w3.org/1999/html" lang="en">
+<html lang="en">
 <!-- Copyright 2024, J. B. Otterson N1KDO. -->
     <head>
-        <meta name="viewport" content="width=device-width, initial-scale=0.8, minimum-scale=0.5, maximum-scale=2.0">
         <title>Setup Networking</title>
-    </head>
     <style>
         .author {
             font-size: 8pt;
@@ -39,6 +37,7 @@
             position: absolute;
             top: 340px;
         }
+
         .bottom_links a:link, .bottom_links a:visited, .bottom_links a:hover {
             color: blue;
             text-decoration: none;
@@ -100,13 +99,13 @@
             text-align: right;
             width: 40%;
         }
+
         .selected {
             color: red;
             padding-right: 4px;
         }
     </style>
     <script>
-
         function page_load() {
             get_config();
         }
@@ -118,8 +117,12 @@
                 return;
             }
             xmlHttp.onreadystatechange = function () {
-                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                if (xmlHttp.readyState !== 4)
+                    return;
+                if (xmlHttp.status === 200) {
                     process_get_config_response(xmlHttp.responseText);
+                } else {
+                    alert("Failed to load configuration data.");
                 }
             }
             xmlHttp.open("GET", "/api/config", true);
@@ -127,35 +130,40 @@
         }
 
         function process_get_config_response(message) {
-            let config = JSON.parse(message);
+            let config;
+            try {
+                config = JSON.parse(message);
+            } catch (e) {
+                alert("Invalid configuration data received.");
+                return;
+            }
             document.getElementById("ssid_input").value = config.SSID;
             let secret = "";
             if (config.secret !== undefined) {
                 secret = config.secret;
             }
             document.getElementById("secret_input").value = secret;
-            document.getElementById("hostname").value = config.hostname;
+            document.getElementById("hostname_input").value = config.hostname;
             document.getElementById("web_port_input").value = config.web_port;
-            let dhcp = config.dhcp
-            document.getElementById("dhcp_input").checked = config.dhcp;
+            document.getElementById("dhcp_input").checked = !!config.dhcp;
             let ip_address_element = document.getElementById("ip_address_input");
             ip_address_element.value = config.ip_address;
-            ip_address_element.disabled = dhcp;
+            ip_address_element.disabled = !!config.dhcp;
             let netmask_element = document.getElementById("netmask_input")
             netmask_element.value = config.netmask;
-            netmask_element.disabled = dhcp;
+            netmask_element.disabled = !!config.dhcp;
             let gateway_element = document.getElementById("gateway_input");
             gateway_element.value = config.gateway;
-            gateway_element.disabled = dhcp;
+            gateway_element.disabled = !!config.dhcp;
             let dns_element = document.getElementById("dns_server_input");
             dns_element.value = config.dns_server;
-            dns_element.disabled = dhcp;
+            dns_element.disabled = !!config.dhcp;
         }
 
         function set_config() {
             let ssid = document.getElementById("ssid_input").value
             let secret = document.getElementById("secret_input").value
-            let hostname = document.getElementById("hostname").value
+            let hostname = document.getElementById("hostname_input").value
             let web_port = document.getElementById("web_port_input").value
             let dhcp = document.getElementById("dhcp_input").checked;
             let dhcp_val = dhcp ? 1 : 0;
@@ -175,7 +183,6 @@
                 alert("Invalid hostname!");
                 return;
             }
-
             x = parseInt(web_port);
             if (x < 0 || x > 65535) {
                 alert("Invalid Web Port");
@@ -250,7 +257,7 @@
 
         function process_restart_response(message) {
             alert("Device will now restart...");
-            cancel_page();
+            window.location.reload()
         }
 
         function dhcp_change() {
@@ -261,8 +268,10 @@
             document.getElementById("dns_server_input").disabled = dhcp;
         }
 
+        document.addEventListener("DOMContentLoaded", page_load);
     </script>
-    <body onload="page_load()">
+</head>
+<body>
         <div class="header">Setup Networking</div>
         <div class="setup_form">
             <form>
@@ -275,8 +284,8 @@
                     <input type="password" id="secret_input" maxlength="64">
                 </p>
                 <p>
-                    <label for="hostname">Hostname:</label>
-                    <input type="text" id="hostname" maxlength="64">
+                    <label for="hostname_input">Hostname:</label>
+                    <input type="text" id="hostname_input" maxlength="64">
                 </p>
                 <p>
                     <label for="web_port_input">Web Port:</label>
@@ -320,7 +329,7 @@
                 <span class="selected">Network</span>
                 <a href="files.html">Files</a>
             </div>
-            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20241116</div>
+            <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20251222</div>
         </div>
     </body>
 </html>
