@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.15'  # 2025-11-06
+__version__ = '0.1.16'  # 2025-12-29
 
 #
 # Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
@@ -852,14 +852,15 @@ async def main():
         ten_count += 1
         if ten_count == 10:
             ten_count = 0
-            if picow_network is not None and picow_network.is_connected():
+            ip_address = picow_network.get_ip_address()
+
+            if picow_network is not None and ip_address is not None:
                 if not time_set:
                     get_ntp_time()
                     if time.time() > 1700000000:
                         time_set = True
 
                 if receive_broadcasts is None:
-                    ip_address = picow_network.get_ip_address()
                     netmask = picow_network.get_netmask()
                     broadcast_address = calculate_broadcast_address(ip_address, netmask)
                     receive_broadcasts = ReceiveBroadcasts(receive_ip=broadcast_address,
