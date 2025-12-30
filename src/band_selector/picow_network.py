@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.10.0'  # 2025-12-23
+__version__ = '0.10.1'  # 2025-12-30
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -105,6 +105,9 @@ class PicowNetwork:
 
     def get_netmask(self):
         return self._netmask
+
+    def is_connected(self):
+        return self._connected
 
     async def set_message(self, message: str, status:int = 0) -> None:
         self._message = message
