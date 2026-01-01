@@ -5,6 +5,8 @@
     "data/",
     "alcd.py",
     "button.py",
+    "cached_config_data.py",
+    "config_data.py",
     "fourbits.py",
     "gpio_pin.py",
     "http_server.py",

@@ -3,11 +3,11 @@
 #
 
 __author__ = 'J. B. Otterson'
-__copyright__ = 'Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.16'  # 2025-12-29
+__copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
+__version__ = '0.1.17'  # 2026-01-01
 
 #
-# Copyright 2022, 2024, 2025 J. B. Otterson N1KDO.
+# Copyright 2022, 2026 J. B. Otterson N1KDO.
 #
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
@@ -31,12 +31,12 @@ __version__ = '0.1.16'  # 2025-12-29
 
 import asyncio
 import gc
-import json
 import sys
 import time
 
 from alcd import LCD
 from button import Button
+from config_data import ConfigData
 from fourbits import FourBits
 from gpio_pin import GPIO_Pin
 from http_server import (HttpServer,
@@ -158,7 +158,6 @@ GPIO_Pin(powersense, msgq, (_MSG_POWER_SENSE, 0), (_MSG_POWER_SENSE, 1))
 timer_mgr = timer_manager.TimerManager()
 udp_timeout_timer = -1
 
-CONFIG_FILE = 'data/config.json'
 CONTENT_DIR = 'content/'
 
 PORT_SETTINGS_FILE = 'data/port_settings.txt'
@@ -171,7 +170,6 @@ DEFAULT_WEB_PORT = 80
 ap_mode = False
 restart = False
 keep_running = True
-config = {}
 current_antenna = -1
 current_antenna_name = 'Unknown Antenna'
 current_band_number = 0
@@ -198,6 +196,8 @@ _NETWORK_DATA_PAGE = const(1)
 ui_page = _RADIO_DATA_PAGE
 current_antenna_list_index = 0
 
+config = ConfigData()
+
 # http server
 http_server = HttpServer(content_dir=CONTENT_DIR)
 
@@ -207,41 +207,6 @@ def select_restart_mode(mode):
     if mode:
         restart = True
         keep_running = False
-
-
-def read_config():
-    global config
-    try:
-        with open(CONFIG_FILE, 'r') as config_file:
-            config = json.load(config_file)
-    except Exception as ex:
-        logging.error(f'failed to load configuration:  {type(ex)}, {ex}', 'main:read_config()')
-    return config
-
-
-def save_config(config_data):
-    with open(CONFIG_FILE, 'w') as config_file:
-        json.dump(config_data, config_file)
-
-
-def default_config():
-    return {
-        'ap_mode': False,
-        'auto_on': False,
-        'dhcp': True,
-        'dns_server': '8.8.8.8',
-        'gateway': '192.168.1.1',
-        'hostname': 'selector1',
-        'ip_address': '192.168.1.73',
-        'log_level': 'debug',
-        'netmask': '255.255.255.0',
-        'radio_number': '1',
-        'SSID': 'your_network_ssid',
-        'secret': 'your_network_password',
-        'switch_ip': '192.168.1.166',
-        'switch_name': 'ant-switch',
-        'web_port': '80',
-    }
 
 
 async def api_response(resp, msg, q):
@@ -319,7 +284,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     global config, switch_host, switch_name, radio_number
     if verb == HTTP_VERB_GET:
-        response = read_config()
+        response = dict(config.get_data())
         # response.pop('secret')  # do not return the secret
         response['secret'] = ''  # do not return the actual secret
         http_status = HTTP_STATUS_OK
@@ -327,18 +292,15 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
     elif verb == HTTP_VERB_POST:
         # could look at state of ap_mode, only allow some changes when in ap_mode.
         ap_mode_param = config.get('ap_mode', False)
-        new_config = read_config()
-        new_config['ap_mode'] = False  # always save as False
-        dirty = False
+        config['ap_mode'] = False  # always save as False
         errors = False
         problems = []
         log_level = args.get('log_level')
         if log_level is not None:
             log_level = log_level.strip().upper()
             if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NONE']:
-                new_config['log_level'] = log_level
+                config['log_level'] = log_level
                 logging.set_level(log_level)
-                dirty = True
             else:
                 errors = True
                 problems.append('log_level')
@@ -346,82 +308,68 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
             if 0 <= web_port_int <= 65535:
-                new_config['web_port'] = web_port
-                dirty = True
+                config['web_port'] = web_port
             else:
                 errors = True
                 problems.append('web_port')
         ssid = args.get('SSID')
         if ssid is not None:
             if 0 < len(ssid) < 64:
-                new_config['SSID'] = ssid
-                dirty = True
+                config['SSID'] = ssid
             else:
                 errors = True
                 problems.append('ssid')
         secret = args.get('secret')
         if secret is not None and len(secret) > 0:
             if 8 <= len(secret) < 32:
-                new_config['secret'] = secret
-                dirty = True
+                config['secret'] = secret
             else:
                 errors = True
                 problems.append('secret')
         hostname = args.get('hostname')
         if hostname is not None:
             if 0 < len(hostname) < 64:
-                new_config['hostname'] = hostname
-                dirty = True
+                config['hostname'] = hostname
             else:
                 errors = True
                 problems.append('hostname')
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
             dhcp = True if dhcp_arg == 1 else False
-            new_config['dhcp'] = dhcp
-            dirty = True
+            config['dhcp'] = dhcp
         ip_address = args.get('ip_address')
         if ip_address is not None:
-            new_config['ip_address'] = ip_address
-            dirty = True
+            config['ip_address'] = ip_address
         netmask = args.get('netmask')
         if netmask is not None:
-            new_config['netmask'] = netmask
-            dirty = True
+            config['netmask'] = netmask
         gateway = args.get('gateway')
         if gateway is not None:
-            new_config['gateway'] = gateway
-            dirty = True
+            config['gateway'] = gateway
         dns_server = args.get('dns_server')
         if dns_server is not None:
-            new_config['dns_server'] = dns_server
-            dirty = True
+            config['dns_server'] = dns_server
         switch_ip = args.get('switch_ip')
         if switch_ip is not None:
             switch_host = switch_ip.encode()
-            new_config['switch_ip'] = switch_ip
-            dirty = True
+            config['switch_ip'] = switch_ip
         switch_name_arg = args.get('switch_name')
         if switch_name_arg is not None:
             switch_name = switch_name_arg
-            new_config['switch_name'] = switch_name_arg
-            dirty = True
+            config['switch_name'] = switch_name_arg
         cfg_auto_on = args.get('auto_on')
         if cfg_auto_on is not None:
             auto_on = cfg_auto_on == 1
-            new_config['auto_on'] = auto_on
+            config['auto_on'] = auto_on
         cfg_radio_number = args.get('radio_number')
         if cfg_radio_number is not None:
             cfg_radio_number = safe_int(cfg_radio_number, -1)
             if 1 <= cfg_radio_number <= 2:
                 radio_number = cfg_radio_number
-                new_config['radio_number'] = cfg_radio_number
-                dirty = True
+                config['radio_number'] = cfg_radio_number
             else:
                 errors = True
         if not errors:
-            if dirty:
-                save_config(new_config)
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
             bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
@@ -804,15 +752,7 @@ async def put_timer_message(msg):
 
 async def main():
     global ap_mode, keep_running, config, restart, radio_number, switch_host, switch_name
-    config = read_config()
-    if len(config) == 0:
-        # create default configuration
-        config = default_config()
-        config['ap_mode'] = sw1.value() == 0
-        save_config(config)
-    else:
-        config['ap_mode'] = sw1.value() == 0
-
+    config['ap_mode'] = sw1.value() == 0
     config_level = config.get('log_level')
     if config_level:
         logging.set_level(config_level)
@@ -878,6 +818,8 @@ async def main():
                         await power_on()
         blinky.toggle()
 
+    config.flush()
+
     if upython:
         logging.warning('calling soft_reset', 'main:main')
         machine.soft_reset()
@@ -896,4 +838,5 @@ if __name__ == '__main__':
         logging.info('KeyboardInterrupt -- bye bye', 'main:__main__')
     finally:
         asyncio.new_event_loop()
+    config.flush()
     logging.info('done', 'main:__main__')
