@@ -20,7 +20,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.7'  # 2025-12-31
+__version__ = '0.10.8'  # 2026-01-01
 
 """
 Note: to edit linux forced device names, edit
@@ -206,7 +206,7 @@ def load_device(port, force=False,
         try:
             print('resetting target device...')
             loader_reset(target)
-        except SerialException as e:
+        except Exception as e:
             time.sleep(3)
         else:
             print('expected disconnect on reset, something is wrong?')
