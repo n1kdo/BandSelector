@@ -29,7 +29,6 @@ def get_ntp_time(host='pool.ntp.org'):
         sock.settimeout(_SOCKET_TIMEOUT)
         sock.sendto(_NTP_MSG, address)
         msg = sock.recvfrom(_BUF_SIZE)[0]
-        sock.close()
 
         t = struct.unpack(_STRUCT_FORMAT, msg)[10] - _UNIX_EPOCH
         tt = time.gmtime(t)

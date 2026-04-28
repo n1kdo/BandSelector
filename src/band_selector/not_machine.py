@@ -3,8 +3,8 @@
 #
 
 __author__ = 'J. B. Otterson'
-__copyright__ = 'Copyright 2024 J. B. Otterson N1KDO.'
-__version__ = '0.0.1'
+__copyright__ = 'Copyright 2024, 2026,  J. B. Otterson N1KDO.'
+__version__ = '0.0.2'  # 2026-04-28
 
 #
 # Copyright 2024 J. B. Otterson N1KDO.
@@ -62,20 +62,23 @@ class Machine(object):
         PULL_UP = 0
 
         def __init__(self, name, options=0, value=0):
-            self.value = value
+            self.pin_value = value
             self.name = name
             self.options = options
 
         def on(self):
-            self.value = 1
+            self.pin_value = 1
 
         def off(self):
-            self.value = 0
+            self.pin_value = 0
+
+        def toggle(self):
+            self.pin_value ^= 1
 
         def value(self, new_value=None) -> int:
             if new_value is not None:
-                self.value = 1 if new_value else 0
-            return self.value
+                self.pin_value = 1 if new_value else 0
+            return self.pin_value
 
     class I2C(object):
         def __init__(self, id, sda, scl):

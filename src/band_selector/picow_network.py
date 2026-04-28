@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.10.3'  # 2026-04-27
+__version__ = '0.10.4'  # 2026-04-28
 #
 # Copyright 2024, 2025, J. B. Otterson N1KDO.
 #
@@ -121,6 +121,8 @@ class PicowNetwork:
         sleep = asyncio.sleep
         wl_status = 0
 
+        onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
+        onboard.on()
         if self._access_point_mode:
             if self._long_messages:
                 await self.set_message('Starting setup WLAN...')

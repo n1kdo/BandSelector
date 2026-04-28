@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.12'  # 2026-04-27
+__version__ = '0.1.13'  # 2026-04-28
 
 import gc
 import json
@@ -515,7 +515,7 @@ async def api_remove_file_callback(http, verb, args, reader, writer, request_hea
     else:
         http_status = HTTP_STATUS_CONFLICT
         response = b'bad file name'
-    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -540,5 +540,5 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
     else:
         http_status = HTTP_STATUS_CONFLICT
         response = b'bad file name'
-    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status

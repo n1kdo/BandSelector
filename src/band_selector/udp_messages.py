@@ -1,6 +1,6 @@
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2025, J. B. Otterson N1KDO.
+Copyright 2025, 2026, J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.1'
+__version__ = '0.0.2'  # 2026-04-28
 
 from ringbuf_queue import RingbufQueue
 from utils import upython
@@ -170,8 +170,7 @@ class ReceiveBroadcasts:
                 logging.exception('problem receiving datagram',
                                   'udp_messages:ReceiveBroadcasts.:wait_for_datagram', exc_info=exc)
             await asyncio.sleep(0.1)
-        while self.run:
-            pass
+
 
     def stop(self):
         self.run = False

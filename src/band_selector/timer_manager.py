@@ -1,6 +1,6 @@
 __author__ = 'J. B. Otterson'
 __copyright__ = """
-Copyright 2025, J. B. Otterson N1KDO.
+Copyright 2025, 2026, J. B. Otterson N1KDO.
 Redistribution and use in source and binary forms, with or without modification, 
 are permitted provided that the following conditions are met:
   1. Redistributions of source code must retain the above copyright notice, 
@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.1'
+__version__ = '0.0.2'  # 2026-04-28
 
 
 from asyncio import create_task, sleep_ms
@@ -115,8 +115,8 @@ class TimerManager:
                         else:
                             timer.callback(timer.argument)
                     except Exception as e:
-                        print(e)
-                        exit(1)
+                        logging.exception('timer callback raised', 'timer_manager:_check_timers', e)
+                        raise e 
                     if timer.auto_reset:
                         timer.remaining = timer.delay
                     else:

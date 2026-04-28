@@ -2,7 +2,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.2'
+__version__ = '0.1.3'  # 2026-04-28
 #
 # bastardized from Peter Hinch's alcd.py retrieved from
 #  https://github.com/peterhinch/micropython-async/blob/master/v3/as_drivers/hd44780/alcd.py
@@ -24,8 +24,7 @@ __version__ = '0.1.2'
 # Author : Matt Hawkins
 # Site   : http://www.raspberrypi-spy.co.uk
 
-import sys
-upython = sys.implementation.name == 'micropython'
+from utils import upython
 
 import asyncio
 

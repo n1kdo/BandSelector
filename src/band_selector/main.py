@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.17'  # 2026-01-01
+__version__ = '0.1.18'  # 2026-04-28
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -160,15 +160,12 @@ udp_timeout_timer = -1
 
 CONTENT_DIR = 'content/'
 
-PORT_SETTINGS_FILE = 'data/port_settings.txt'
-
 DEFAULT_SECRET = 'selector'
 DEFAULT_SSID = 'selector'
 DEFAULT_WEB_PORT = 80
 
 # globals...
 ap_mode = False
-restart = False
 keep_running = True
 current_antenna = -1
 current_antenna_name = 'Unknown Antenna'
@@ -187,7 +184,6 @@ switch_timeouts = 0
 
 # well-loved status messages
 ui_pages = [['', ''], ['', '']]
-num_ui_pages = len(ui_pages)
 
 # UI state machine data
 _RADIO_DATA_PAGE = const(0)
@@ -200,13 +196,6 @@ config = ConfigData()
 
 # http server
 http_server = HttpServer(content_dir=CONTENT_DIR)
-
-
-def select_restart_mode(mode):
-    global restart, keep_running
-    if mode:
-        restart = True
-        keep_running = False
 
 
 async def api_response(resp, msg, q):
@@ -298,7 +287,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         log_level = args.get('log_level')
         if log_level is not None:
             log_level = log_level.strip().upper()
-            if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NONE']:
+            if log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'NOTHING']:
                 config['log_level'] = log_level
                 logging.set_level(log_level)
             else:
@@ -307,8 +296,8 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         web_port = args.get('web_port')
         if web_port is not None:
             web_port_int = safe_int(web_port, -2)
-            if 0 <= web_port_int <= 65535:
-                config['web_port'] = web_port
+            if 1 <= web_port_int <= 65535:
+                config['web_port'] = web_port_int
             else:
                 errors = True
                 problems.append('web_port')
@@ -335,7 +324,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 problems.append('hostname')
         dhcp_arg = args.get('dhcp')
         if dhcp_arg is not None:
-            dhcp = True if dhcp_arg == 1 else False
+            dhcp = bool(safe_int(dhcp_arg, 0))
             config['dhcp'] = dhcp
         ip_address = args.get('ip_address')
         if ip_address is not None:
@@ -359,7 +348,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             config['switch_name'] = switch_name_arg
         cfg_auto_on = args.get('auto_on')
         if cfg_auto_on is not None:
-            auto_on = cfg_auto_on == 1
+            auto_on = bool(safe_int(cfg_auto_on, 0))
             config['auto_on'] = auto_on
         cfg_radio_number = args.get('radio_number')
         if cfg_radio_number is not None:
@@ -369,6 +358,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 config['radio_number'] = cfg_radio_number
             else:
                 errors = True
+                problems.append('radio_number')
         if not errors:
             response = b'ok\r\n'
             http_status = HTTP_STATUS_OK
@@ -389,6 +379,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
 @http_server.route(b'/api/restart')
 async def api_restart_callback(http, verb, args, reader, writer, request_headers=None):
     global keep_running
+    config.flush()
     if upython:
         keep_running = False
         response = b'ok\r\n'
@@ -436,16 +427,12 @@ async def api_power_on_radio_callback(http, verb, args, reader, writer, request_
 
 
 def find_band_antennae(new_band_number: int):
-    antennas = []
     mask = MASKS[new_band_number]
-    bands = 1
-    # get a list of antennas for this band with the list sorted from the antenna with the fewest other bands
-    while bands < len(BANDS):
-        for i in range(0, len(antenna_bands)):
-            if mask & antenna_bands[i] and num_bits_set(antenna_bands[i]) == bands:
-                antennas.append(i)
-        bands += 1
-    return antennas
+    candidates = [(num_bits_set(antenna_bands[i]), i)
+                  for i in range(len(antenna_bands))
+                  if mask & antenna_bands[i]]
+    candidates.sort()          # sort by bit-count (fewest shared bands first)
+    return [i for _, i in candidates]
 
 
 def set_inhibit(inhibit):
@@ -580,6 +567,11 @@ async def msg_loop(q):
             else:
                 logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                 network_connected = False
+                global receive_broadcasts, broadcast_receiver_task
+                if receive_broadcasts is not None:
+                    receive_broadcasts.stop()
+                receive_broadcasts = None
+                broadcast_receiver_task = None
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             if logging.should_log(logging.INFO):
@@ -602,9 +594,9 @@ async def msg_loop(q):
                     else:  # update the display with the band name
                         await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} {BANDS[current_band_number]}', None)
                 else:
-                    msg = f'unknown band # {m1}'
-                    logging.error(msg)
-                    await update_ui_page(_RADIO_DATA_PAGE, msg, None)
+                    errmsg = f'unknown band # {m1}'
+                    logging.error(errmsg)
+                    await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
                     set_inhibit(1)
         elif m0 == _MSG_ANTENNA_RESPONSE:  # http select antenna response
             http_status = m1[0]
@@ -638,6 +630,7 @@ async def msg_loop(q):
             if len(m1) == 21:
                 msg_switch_name = m1[SWITCH_NAME_OFFSET]
                 if msg_switch_name == switch_name:  # this is a message for us.
+                    switch_timeouts = 0
                     if not switch_connected:
                         logging.info('switch_connected False to True transition',
                                      'main:msg_loop:_MSG_UDP_RESPONSE')
@@ -676,18 +669,18 @@ async def msg_loop(q):
                     await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
 
                     if not radio_power:
-                        msg = f'{radio_name} No Power'
+                        errmsg = f'{radio_name} No Power'
                         # if logging.should_log(logging.DEBUG):  # doesn't matter
-                        logging.debug(msg, 'main:msg_loop:NoPower')
-                        await update_ui_page(_RADIO_DATA_PAGE, msg, None)
+                        logging.debug(errmsg, 'main:msg_loop:NoPower')
+                        await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
                         set_inhibit(1)
                     else:
                         if current_band_number < 1 or current_band_number > 13:
                             # this does not look like a valid band choice, read the band data again.
                             band_detector.invalidate()
                         else:
-                            msg = f'{radio_name} {BANDS[current_band_number]}'
-                            await update_ui_page(_RADIO_DATA_PAGE, msg, None)
+                            errmsg = f'{radio_name} {BANDS[current_band_number]}'
+                            await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
                             if current_antenna < 1:
                                 set_inhibit(1)
                             else:
@@ -764,7 +757,7 @@ async def main():
     ap_mode = config.get('ap_mode', False)
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
-    if web_port < 0 or web_port > 65535:
+    if web_port < 1 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
 
     time_set = False
@@ -792,9 +785,12 @@ async def main():
         ten_count += 1
         if ten_count == 10:
             ten_count = 0
-            ip_address = picow_network.get_ip_address()
+            if picow_network is not None:
+                ip_address = picow_network.get_ip_address()
+            else:
+                ip_address = None
 
-            if picow_network is not None and ip_address is not None:
+            if ip_address is not None:
                 if not time_set:
                     get_ntp_time()
                     if time.time() > 1700000000:

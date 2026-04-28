@@ -49,10 +49,10 @@ class ConfigData(CachedConfigData):
             'ip_address': '192.168.1.73',
             'log_level': 'debug',
             'netmask': '255.255.255.0',
-            'radio_number': '1',
+            'radio_number': 1,
             'SSID': 'your_network_ssid',
             'secret': 'your_network_password',
             'switch_ip': '192.168.1.166',
             'switch_name': 'ant-switch',
-            'web_port': '80',
+            'web_port': 80,
         }
