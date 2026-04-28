@@ -128,10 +128,10 @@
             let radio_power = status_data.radio_power;
 
             if (lcd_lines[0].trim().length === 0) {
-                lcd_lines[0] = "&nbsp;";
+                lcd_lines[0] = " ";
             }
             if (lcd_lines[1].trim().length === 0) {
-                lcd_lines[1] = "&nbsp;";
+                lcd_lines[1] = " ";
             }
 
             document.getElementById("lcd1").textContent = lcd_lines[0];
@@ -216,7 +216,7 @@
     </script>
 </head>
 
-<body onload="page_load()">
+<body>
 <div class="header">Band Selector Status</div>
 <div class="lcd">
     <span id="lcd1"></span><br>

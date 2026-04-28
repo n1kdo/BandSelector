@@ -117,6 +117,11 @@
         }
     </style>
     <script>
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         function page_load() {
             document.getElementById("upload_button").disabled = true;
             get_files();
@@ -142,16 +147,17 @@
         }
 
         function files_func(value) {
+            let safe = escapeHtml(value);
             let download_cell = document.createElement("td");
-            download_cell.innerHTML = '<a href="' + value + '" download>' + value + '</a>';
+            download_cell.innerHTML = '<a href="' + safe + '" download>' + safe + '</a>';
             let delete_cell = document.createElement("td");
             if (value.endsWith('.html')) {
-                delete_cell.innerHTML = ''; // <input type="button" onclick="delete_file(\''+value+'\')" value="Delete" class="file_button" disabled>';
+                delete_cell.innerHTML = ''; // html files are protected from deletion
             } else {
-                delete_cell.innerHTML = '<input type="button" onclick="remove_file(\'' + value + '\')" value="Delete" class="file_button">';
+                delete_cell.innerHTML = '<input type="button" onclick="remove_file(&#39;' + safe + '&#39;)" value="Delete" class="file_button">';
             }
             let rename_cell = document.createElement("td");
-            rename_cell.innerHTML = '<input type="button" onclick="rename_file(\'' + value + '\')" value="Rename" class="file_button">';
+            rename_cell.innerHTML = '<input type="button" onclick="rename_file(&#39;' + safe + '&#39;)" value="Rename" class="file_button">';
             let file_row = document.createElement("tr");
             file_row.appendChild(download_cell);
             file_row.appendChild(delete_cell);
@@ -220,7 +226,7 @@
                 }
                 xmlHttp.onreadystatechange = function () {
                     if (xmlHttp.readyState === 4) {
-                        process_remove_file_response(xmlHttp.responseText, xmlHttp.status);
+                        process_file_action_response(xmlHttp.responseText, xmlHttp.status);
                     }
                 }
                 xmlHttp.open("POST", "/api/remove_file", true);
@@ -229,7 +235,7 @@
             }
         }
 
-        function process_remove_file_response(message, status) {
+        function process_file_action_response(message, status) {
             alert(message + ' ' + status);
             get_files();
         }
@@ -249,7 +255,7 @@
                 }
                 xmlHttp.onreadystatechange = function () {
                     if (xmlHttp.readyState === 4) {
-                        process_remove_file_response(xmlHttp.responseText, xmlHttp.status);  // shows a popup result box
+                        process_file_action_response(xmlHttp.responseText, xmlHttp.status);  // shows a popup result box
                     }
                 }
                 xmlHttp.open("POST", "/api/rename_file", true);

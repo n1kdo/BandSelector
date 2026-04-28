@@ -184,8 +184,8 @@
                 alert("Invalid hostname!");
                 return;
             }
-            x = parseInt(web_port);
-            if (x < 0 || x > 65535) {
+            let webPortInt = parseInt(web_port);
+            if (webPortInt < 0 || webPortInt > 65535) {
                 alert("Invalid Web Port");
                 return;
             }
@@ -214,7 +214,7 @@
             config.SSID = ssid;
             config.secret = secret;
             config.hostname = hostname;
-            config.web_port = web_port;
+            config.web_port = webPortInt;
             config.dhcp = dhcp_val;
             config.ip_address = ip_address;
             config.netmask = netmask;
