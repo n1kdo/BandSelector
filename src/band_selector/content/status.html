@@ -134,8 +134,8 @@
                 lcd_lines[1] = "&nbsp;";
             }
 
-            document.getElementById("lcd1").innerHTML = lcd_lines[0];
-            document.getElementById("lcd2").innerHTML = lcd_lines[1];
+            document.getElementById("lcd1").textContent = lcd_lines[0];
+            document.getElementById("lcd2").textContent = lcd_lines[1];
             let power_div = document.getElementById("poweroff");
             if (!radio_power) {
                 power_div.style.display = "block";
@@ -162,7 +162,7 @@
 
         function get_status() {
             let xmlHttp = new XMLHttpRequest();
-            if (xmlHttp == null) {
+            if (xmlHttp === null) {
                 alert("get a better browser!");
                 return;
             }
@@ -187,7 +187,7 @@
 
         function power_on() {
             let xmlHttp = new XMLHttpRequest();
-            if (xmlHttp == null) {
+            if (xmlHttp === null) {
                 alert("get a better browser!");
                 return;
             }
@@ -243,7 +243,7 @@
         <a href="network.html">Network</a>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260107</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260428</div>
 </div>
 </body>
 </html>
