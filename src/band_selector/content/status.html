@@ -67,6 +67,17 @@
             color: green;
         }
 
+        .ui_button {
+            font-weight: bold;
+            margin-top: 2px;
+            width: 5em;
+        }
+
+        .ui_table {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
         div.refresh_radio {
             margin: 50px 100px 10px 100px;
             text-align: left;
@@ -113,6 +124,10 @@
                     }
                 }
             }
+            get_status();
+        }
+
+        function process_button_response(message) {
             get_status();
         }
 
@@ -200,6 +215,21 @@
             xmlHttp.send();
         }
 
+        function button(bNum) {
+            let xmlHttp = new XMLHttpRequest();
+            if (xmlHttp === null) {
+                alert("get a better browser!");
+                return;
+            }
+            xmlHttp.onreadystatechange = function () {
+                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                    process_button_response(xmlHttp.responseText);
+                }
+            }
+            xmlHttp.open("GET", "/api/button?button=" + bNum.toString(), true);
+            xmlHttp.send();
+        }
+
         function set_refresh(secs) {
             update_secs = secs
             if (update_secs === 0) {
@@ -218,10 +248,26 @@
 
 <body>
 <div class="header">Band Selector Status</div>
-<div class="lcd">
-    <span id="lcd1"></span><br>
-    <span id="lcd2"></span>
-</div>
+<table class="ui_table">
+    <tr>
+        <td>
+            <input class="ui_button" type="button" value="Radio" onClick="button(1);">
+            <br>
+            <input class="ui_button" type="button" value="Network" onClick="button(2);">
+        </td>
+        <td>
+            <div class="lcd">
+                <span id="lcd1"></span><br>
+                <span id="lcd2"></span>
+            </div>
+        </td>
+        <td>
+            <input class="ui_button" type="button" value="&#x2191" onClick="button(3);">
+            <br>
+            <input class="ui_button" type="button" value="&#x2193" onClick="button(4);">
+        </td>
+    </tr>
+</table>
 <div class="poweroff" id="poweroff">
     <input class="power_button" type="button" value="Power On Radio" onClick="power_on();">
 </div>
@@ -243,7 +289,7 @@
         <a href="network.html">Network</a>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260428</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260518</div>
 </div>
 </body>
 </html>

@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.18'  # 2026-04-28
+__version__ = '0.1.19'  # 2026-05-18
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -413,6 +413,7 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
     bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     return bytes_sent, http_status
 
+
 @http_server.route(b'/api/power_on_radio')
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
@@ -423,6 +424,33 @@ async def api_power_on_radio_callback(http, verb, args, reader, writer, request_
                 }
     http_status = HTTP_STATUS_OK
     bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    return bytes_sent, http_status
+
+
+@http_server.route(b'/api/button')
+async def api_button_press(http, verb, args, reader, writer, request_headers=None):
+    response = b'Invalid button number.\r\n'
+    http_status = HTTP_STATUS_BAD_REQUEST
+    button = args.get('button')
+    if button is not None:
+        button_num = safe_int(button, -1)
+        if button_num == 1:
+            await msgq.put((_MSG_BTN_1, 0))
+            http_status = HTTP_STATUS_OK
+            response = b'ok\r\n'
+        elif button_num == 2:
+            await msgq.put((_MSG_BTN_2, 0))
+            http_status = HTTP_STATUS_OK
+            response = b'ok\r\n'
+        elif button_num == 3:
+            await msgq.put((_MSG_BTN_3, 0))
+            http_status = HTTP_STATUS_OK
+            response = b'ok\r\n'
+        elif button_num == 4:
+            await msgq.put((_MSG_BTN_4, 0))
+            http_status = HTTP_STATUS_OK
+            response = b'ok\r\n'
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     return bytes_sent, http_status
 
 
@@ -644,7 +672,8 @@ async def msg_loop(q):
                     radio_names = [m1[x + RADIO_NAMES_OFFSET] for x in range(RADIO_NAMES_SIZE)]
                     antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
                     antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
-                    # logging.info(f'{radio_1_antenna} {radio_2_antenna} {radio_names} {antenna_names} {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(f'{radio_1_antenna} {radio_2_antenna} {radio_names} {antenna_names} {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
 
                     if radio_number == 1 or radio_number == 2:
                         radio_name = radio_names[radio_number - 1]
