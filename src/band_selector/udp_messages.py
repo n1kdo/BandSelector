@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.2'  # 2026-04-28
+__version__ = '0.0.3'  # 2026-05-20
 
 from ringbuf_queue import RingbufQueue
 from utils import upython
@@ -153,14 +153,16 @@ class ReceiveBroadcasts:
         while self.run:
             try:
                 bytes_in = self.receive_socket.readinto(self.buf)
-                logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                #if logging.should_log(logging.DEBUG):
+                #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                 stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
                 data = []
                 for item in stuff:
                     if isinstance(item, bytes):
                         item = item.partition(b'\0')[0].decode()
                     data.append(item)
-                logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                if logging.should_log((logging.DEBUG)):
+                    logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                 msg = (self.msgid, data)
                 await self.msgq.put(msg)
             except OSError as exc:
