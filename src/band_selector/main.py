@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.19'  # 2026-05-18
+__version__ = '0.1.20'  # 2026-05-20
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -551,8 +551,8 @@ async def msg_loop(q):
         t0 = milliseconds()
         m0 = msg[0]
         m1 = msg[1]
-        if logging.should_log(logging.DEBUG):
-            logging.debug(f'msg received: {m0} : {m1}', 'main:msg_loop')
+        # if logging.should_log(logging.DEBUG):
+        #    logging.debug(f'msg received: {m0} : {m1}', 'main:msg_loop')
         if m0 == 0:
             logging.error(f'impossible message 0')
         elif m0 == _MSG_BTN_1:  # show radio status
@@ -750,8 +750,8 @@ async def msg_loop(q):
         dt = milliseconds() - t0
         if dt > 100:
             logging.warning(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
-        elif logging.should_log(logging.DEBUG):
-            logging.debug(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
+        # elif logging.should_log(logging.DEBUG):
+        #     logging.debug(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
 
 
 async def net_msg_func(message: str, msg_status=0) -> None:
