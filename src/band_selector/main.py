@@ -673,7 +673,10 @@ async def msg_loop(q):
                     antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
                     antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
                     if logging.should_log(logging.DEBUG):
-                        logging.debug(f'{radio_1_antenna} {radio_2_antenna} {radio_names} {antenna_names} {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        logging.debug(f'radio_1_antenna: {radio_1_antenna} radio_2_antenna:{radio_2_antenna}' 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        logging.debug(f'radio_names: {radio_names}' 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        logging.debug(f'antenna_names: {antenna_names}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        logging.debug(f'antenna_bands: {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
 
                     if radio_number == 1 or radio_number == 2:
                         radio_name = radio_names[radio_number - 1]
