@@ -23,8 +23,9 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.14'  # 2026-05-24
+__version__ = '0.1.15'  # 2026-05-25
 
+import asyncio
 import gc
 import json
 import os
@@ -130,6 +131,7 @@ class HttpServer:
 
         self.buffer = bytearray(_BUFFER_SIZE)
         self.bmv = memoryview(self.buffer)
+        self._content_lock = asyncio.Lock()
 
     def route(self, uri):
         if isinstance(uri, str):
@@ -161,25 +163,26 @@ class HttpServer:
         content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension, b'application/octet-stream')
         await self.start_response(writer, HTTP_STATUS_OK, content_type, content_length)
         try:
-            with open(filename, 'rb', _BUFFER_SIZE) as infile:
-                bytes_since_drain = 0
-                # Drain after roughly 16 KB or at EOF to reduce syscall overhead while preventing buffer bloat.
-                drain_threshold = _BUFFER_SIZE * 4
-                while True:
-                    bytes_read = infile.readinto(self.buffer)
-                    if bytes_read:
-                        writer.write(self.bmv[:bytes_read])
-                        bytes_since_drain += bytes_read
-                        if bytes_since_drain >= drain_threshold:
-                            await writer.drain()
-                            bytes_since_drain = 0
-                    if bytes_read < _BUFFER_SIZE:
-                        # EOF reached; ensure pending bytes are flushed.
-                        if bytes_since_drain:
-                            await writer.drain()
-                        break
+            async with self._content_lock:
+                with open(filename, 'rb', _BUFFER_SIZE) as infile:
+                    bytes_since_drain = 0
+                    # Drain after roughly 16 KB or at EOF to reduce syscall overhead while preventing buffer bloat.
+                    drain_threshold = _BUFFER_SIZE * 4
+                    while True:
+                        bytes_read = infile.readinto(self.buffer)
+                        if bytes_read:
+                            writer.write(self.bmv[:bytes_read])
+                            bytes_since_drain += bytes_read
+                            if bytes_since_drain >= drain_threshold:
+                                await writer.drain()
+                                bytes_since_drain = 0
+                        if bytes_read < _BUFFER_SIZE:
+                            # EOF reached; ensure pending bytes are flushed.
+                            if bytes_since_drain:
+                                await writer.drain()
+                            break
         except Exception as exc:
-            logging.error(f'{type(exc)} {exc}', 'http_server:serve_content')
+            logging.exception(f'error serving {filename}', 'http_server:serve_content', exc_info=exc)
         return content_length, HTTP_STATUS_OK
 
     async def start_response(self, writer, http_status:int=HTTP_STATUS_OK, content_type:bytes=b'', response_size:int=0, extra_headers:list[bytes]=None):

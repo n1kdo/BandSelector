@@ -162,7 +162,6 @@ class SendBroadcasts:
 class ReceiveBroadcasts:
     """
     class that receives antenna control UDP messages from BandSelectors.
-    None of this is implemented yet.
     """
 
     def __init__(self, receive_ip, receive_port, message_queue: RingbufQueue, message_id: int):
@@ -176,7 +175,7 @@ class ReceiveBroadcasts:
             sockaddr = socket.getaddrinfo(receive_ip, receive_port)[0][-1]
             self.receive_socket.bind(sockaddr)
             self.receive_socket.settimeout(0.001)
-            logging.info(f'Broadcast address is {receive_ip}:{receive_port}', 'udp_messages:ReceiveBroadcasts.init')
+            logging.info(f'Listening on {receive_ip}:{receive_port}', 'udp_messages:ReceiveBroadcasts.init')
             logging.info(f'Listening for status broadcasts', 'udp_messages:ReceiveBroadcasts.init')
         except Exception as exc:
             logging.exception('problem setting up socket', 'udp_messages:ReceiveBroadcasts.init', exc_info=exc)
@@ -212,7 +211,7 @@ class ReceiveBroadcasts:
                 pass
             except Exception as exc:
                 logging.exception('problem receiving datagram',
-                                  'udp_messages:ReceiveBroadcasts.:wait_for_datagram', exc_info=exc)
+                                  'udp_messages:ReceiveBroadcasts:wait_for_datagram', exc_info=exc)
             await asyncio.sleep(0.1)
 
 
