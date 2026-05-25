@@ -120,7 +120,8 @@ class SendBroadcasts:
                 logging.debug(f'radio_names: {radio_names}', 'udp_messages:send_datagrams')
                 logging.debug(f'antenna_names: {antenna_names}', 'udp_messages:send_datagrams')
                 logging.debug(f'antenna_bands: {antenna_bands}', 'udp_messages:send_datagrams')
-                logging.debug(f'antennas_selected: {antennas_selected}', 'udp_messages:send_datagrams')
+                logging.debug(f'antennas_selected: {antennas_selected[0]}, {antennas_selected[1]}',
+                              'udp_messages:send_datagrams')
                 logging.debug(f'hostname: {hostname}', 'udp_messages:send_datagrams')
             try:
                 pack_into(STATUS_BROADCAST_FMT, buf, 0,
