@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.2'  # 2026-04-28
+__version__ = '0.0.3'  # 2026-05-25
 
 
 from asyncio import create_task, sleep_ms
@@ -40,7 +40,7 @@ class Timer:
     def __init__(self, delay:float, callback, arg=None, auto_reset:bool=False)->None:
         Timer.indexCounter += 1
         self.index = Timer.indexCounter
-        self.delay = int(delay*10)
+        self.delay = max(1, int(delay * 10))
         self.remaining = self.delay
         self.auto_reset = auto_reset
         self.callback = callback
@@ -51,7 +51,7 @@ class Timer:
 class TimerManager:
     """
     TimerManager provides one-shot or periodic timer function callbacks.
-    Note that resolution is "about" 100 milliseconds.
+    Note that the resolution is "about" 100 milliseconds.
     """
 
     def __init__(self):
@@ -61,7 +61,7 @@ class TimerManager:
 
     def add_timer(self, delay, callback, arg, auto_reset=False)->int:
         """
-        Adds a new timer .
+        Adds a new timer.
         :param delay: how long to delay the timer.
         :param callback:  function to execute when timer expires
         :param arg: argument to pass to callback
@@ -116,7 +116,6 @@ class TimerManager:
                             timer.callback(timer.argument)
                     except Exception as e:
                         logging.exception('timer callback raised', 'timer_manager:_check_timers', e)
-                        raise e 
                     if timer.auto_reset:
                         timer.remaining = timer.delay
                     else:

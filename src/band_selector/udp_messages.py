@@ -19,15 +19,11 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.3'  # 2026-05-20
+__version__ = '0.0.4'  # 2026-05-24
 
 from ringbuf_queue import RingbufQueue
-from utils import upython
 import asyncio
-if upython:
-    import micro_logging as logging
-else:
-    import logging
+import micro_logging as logging
 import socket
 from struct import calcsize, pack_into, unpack
 
@@ -74,7 +70,7 @@ class SendBroadcasts:
     class to send UDP status datagrams
     """
 
-    def __init__(self, target_ip, target_port, config: dict, antennas_selected:[]):
+    def __init__(self, target_ip, target_port, config: dict, antennas_selected: list):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sockaddr = socket.getaddrinfo(target_ip, target_port)[0][-1]
@@ -98,7 +94,7 @@ class SendBroadcasts:
         sleep = asyncio.sleep
         while self.run:
             pack_into(STATUS_BROADCAST_FMT, buf, 0,
-                  antennas_selected[0],
+                      antennas_selected[0],
                       antennas_selected[1],
                       radio_names[0],
                       radio_names[1],
@@ -124,6 +120,10 @@ class SendBroadcasts:
 
     def stop(self):
         self.run = False
+        try:
+            self.socket.close()
+        except Exception:
+            pass
 
 
 class ReceiveBroadcasts:
@@ -132,7 +132,7 @@ class ReceiveBroadcasts:
     None of this is implemented yet.
     """
 
-    def __init__(self, receive_ip, receive_port, config:dict, message_queue: RingbufQueue, message_id: int):
+    def __init__(self, receive_ip, receive_port, message_queue: RingbufQueue, message_id: int):
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.msgq = message_queue
@@ -145,27 +145,36 @@ class ReceiveBroadcasts:
             self.receive_socket.settimeout(0.001)
             logging.info(f'Broadcast address is {receive_ip}:{receive_port}', 'udp_messages:ReceiveBroadcasts.init')
             logging.info(f'Listening for status broadcasts', 'udp_messages:ReceiveBroadcasts.init')
-
         except Exception as exc:
             logging.exception('problem setting up socket', 'udp_messages:ReceiveBroadcasts.init', exc_info=exc)
+            self.run = False
+            try:
+                self.receive_socket.close()
+            except Exception:
+                pass
 
     async def wait_for_datagram(self):
         while self.run:
             try:
                 bytes_in = self.receive_socket.readinto(self.buf)
-                #if logging.should_log(logging.DEBUG):
-                #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
-                stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
-                data = []
-                for item in stuff:
-                    if isinstance(item, bytes):
-                        item = item.partition(b'\0')[0].decode()
-                    data.append(item)
-                if logging.should_log((logging.DEBUG)):
-                    logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
-                msg = (self.msgid, data)
-                await self.msgq.put(msg)
-            except OSError as exc:
+                if bytes_in != STATUS_BROADCAST_SIZE:
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(f'received {bytes_in} but expected {STATUS_BROADCAST_SIZE} bytes.',
+                                      'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                else:
+                    # if logging.should_log(logging.DEBUG):
+                    #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                    stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
+                    data = []
+                    for item in stuff:
+                        if isinstance(item, bytes):
+                            item = item.partition(b'\0')[0].decode()
+                        data.append(item)
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                    msg = (self.msgid, data)
+                    await self.msgq.put(msg)
+            except OSError:
                 # this is a timeout exception, no data was received, this is not abnormal.
                 pass
             except Exception as exc:
@@ -176,3 +185,7 @@ class ReceiveBroadcasts:
 
     def stop(self):
         self.run = False
+        try:
+            self.receive_socket.close()
+        except Exception:
+            pass

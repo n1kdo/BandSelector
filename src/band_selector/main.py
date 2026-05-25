@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.20'  # 2026-05-20
+__version__ = '0.1.21'  # 2026-05-25
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -181,6 +181,8 @@ switch_connected = False
 switch_host = None
 switch_name = ''
 switch_timeouts = 0
+receive_broadcasts = None
+broadcast_receiver_task = None
 
 # well-loved status messages
 ui_pages = [['', ''], ['', '']]
@@ -231,7 +233,7 @@ async def call_api(url, msg, q):
         logging.debug(f'{alloc} allocated, {free} free {pct_free:6.2f}% free.', 'main:call_api')
     t0 = milliseconds()
     try:
-        resp = await asyncio.wait_for(aiohttp.request("GET", url), 0.5)
+        resp = await asyncio.wait_for(aiohttp.request(b"GET", url), 0.5)
     except asyncio.TimeoutError:  # as ex:
         dt = milliseconds() - t0
         errmsg = b'timed out on api call to "%s" after %d ms' % (url, dt)
@@ -249,7 +251,7 @@ async def call_api(url, msg, q):
         if logging.should_log(logging.DEBUG):
             dt = milliseconds() - t0
             logging.debug(f'api call to {url} returned {http_status} after {dt} ms', 'main:call_api')
-        msg = (msg[0], (http_status, 'no response'))
+        msg = (msg[0], (http_status, b'no response'))
         asyncio.create_task(api_response(resp, msg, q))
 
 
@@ -279,9 +281,7 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         http_status = HTTP_STATUS_OK
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == HTTP_VERB_POST:
-        # could look at state of ap_mode, only allow some changes when in ap_mode.
-        ap_mode_param = config.get('ap_mode', False)
-        config['ap_mode'] = False  # always save as False
+        config['ap_mode'] = False  # always disable AP mode when changing config.
         errors = False
         problems = []
         log_level = args.get('log_level')
@@ -303,21 +303,21 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
                 problems.append('web_port')
         ssid = args.get('SSID')
         if ssid is not None:
-            if 0 < len(ssid) < 64:
+            if 0 < len(ssid) <= 32:
                 config['SSID'] = ssid
             else:
                 errors = True
                 problems.append('ssid')
         secret = args.get('secret')
         if secret is not None and len(secret) > 0:
-            if 8 <= len(secret) < 32:
+            if 8 <= len(secret) < 64:
                 config['secret'] = secret
             else:
                 errors = True
                 problems.append('secret')
         hostname = args.get('hostname')
         if hostname is not None:
-            if 0 < len(hostname) < 64:
+            if 0 < len(hostname) <= 64:
                 config['hostname'] = hostname
             else:
                 errors = True
@@ -541,9 +541,9 @@ async def show_ui_page(page):
 
 
 async def msg_loop(q):
-    global antenna_bands, antenna_names, band_antennae, \
+    global antenna_bands, antenna_names, band_antennae, broadcast_receiver_task, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
-        network_connected, radio_name, radio_power, \
+        network_connected, radio_name, radio_power, receive_broadcasts, \
         switch_connected, switch_timeouts, udp_timeout_timer
 
     while True:
@@ -595,7 +595,6 @@ async def msg_loop(q):
             else:
                 logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                 network_connected = False
-                global receive_broadcasts, broadcast_receiver_task
                 if receive_broadcasts is not None:
                     receive_broadcasts.stop()
                 receive_broadcasts = None
@@ -629,7 +628,21 @@ async def msg_loop(q):
         elif m0 == _MSG_ANTENNA_RESPONSE:  # http select antenna response
             http_status = m1[0]
             payload = m1[1].decode().strip()
-            if http_status == 0:  # api call failed
+            if http_status == _API_STATUS_TIMEOUT:
+                switch_connected = False
+                current_antenna = -1
+                current_antenna_name = '_Switch API Timeout_'
+                #                      '12345678901234567890'
+                await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                set_inhibit(1)
+            elif http_status == _API_STATUS_ERROR or http_status == _API_STATUS_READ_ERROR:
+                switch_connected = False
+                current_antenna = -1
+                current_antenna_name = '__Switch API Error__'
+                #                      '12345678901234567890'
+                await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                set_inhibit(1)
+            elif http_status == 0:  # api call failed
                 switch_connected = False
                 current_antenna = -1
                 current_antenna_name = '_No Antenna Switch!_'
@@ -776,7 +789,7 @@ async def put_timer_message(msg):
 
 
 async def main():
-    global ap_mode, keep_running, config, restart, radio_number, switch_host, switch_name
+    global ap_mode, keep_running, config, radio_number, receive_broadcasts, switch_host, switch_name, broadcast_receiver_task
     config['ap_mode'] = sw1.value() == 0
     config_level = config.get('log_level')
     if config_level:
@@ -795,8 +808,8 @@ async def main():
     time_set = False
 
     if upython:
-        # if logging.loglevel != logging.DEBUG:
-        #    _ = Watchdog()
+        if logging.loglevel != logging.DEBUG:
+            _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, long_messages=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
     else:
@@ -805,9 +818,6 @@ async def main():
 
     logging.info(f'Starting web service on port {web_port}', 'main:main')
     _web_server_task = asyncio.create_task(asyncio.start_server(http_server.serve_http_client, '0.0.0.0', web_port))
-
-    receive_broadcasts = None
-    broadcast_receiver_task = None
 
     auto_power_timer = 5 if auto_on else 0
     ten_count = 0
@@ -833,7 +843,6 @@ async def main():
                     broadcast_address = calculate_broadcast_address(ip_address, netmask)
                     receive_broadcasts = ReceiveBroadcasts(receive_ip=broadcast_address,
                                                            receive_port=65073,
-                                                           config=config,
                                                            message_queue=msgq,
                                                            message_id=_MSG_UDP_RESPONSE)
                     broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())

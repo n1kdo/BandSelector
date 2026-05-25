@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.13'  # 2026-04-28
+__version__ = '0.1.14'  # 2026-05-24
 
 import gc
 import json
@@ -63,10 +63,12 @@ DOTS = '..'
 SEP = '/'
 
 def _safe_content_path(content_dir: str, filename: str) -> str:
-    """Return the normalized content path if it is inside content_dir, else raise ValueError."""
-    if filename.startswith(SEP) or DOTS in filename:
+    """
+    Return a 'safe' content path for a relative filename,
+    or raise ValueError if filename contains '/' or '..'.
+    """
+    if SEP in filename or DOTS in filename:
         raise ValueError('forbidden path traversal')
-    # join then normpath to prevent traversal
     if content_dir.endswith(SEP):
         joined = content_dir + filename
     else:
@@ -155,7 +157,7 @@ class HttpServer:
             response = b'<html><body><p>404 -- File not found.</p></body></html>'
             return (await self.send_simple_response(writer, HTTP_STATUS_NOT_FOUND, self.CT_TEXT_HTML, response),
                     HTTP_STATUS_NOT_FOUND)
-        extension = filename.split('.')[-1]
+        extension = filename.split('.')[-1].lower()
         content_type = self.FILE_EXTENSION_TO_CONTENT_TYPE_MAP.get(extension, b'application/octet-stream')
         await self.start_response(writer, HTTP_STATUS_OK, content_type, content_length)
         try:
@@ -188,8 +190,8 @@ class HttpServer:
             writer.write(b'Content-type: ')
             writer.write(content_type)
             writer.write(b'; charset=UTF-8\r\n')
-        if response_size > 0:
-            writer.write(b'Content-length: %d \r\n' % response_size)
+        if response_size >= 0:
+            writer.write(b'Content-length: %d\r\n' % response_size)
         if extra_headers is not None:
             for header in extra_headers:
                 writer.write(header)
@@ -221,6 +223,7 @@ class HttpServer:
 
     @classmethod
     def url_unquote(cls, s):
+        s = s.replace('+', ' ')
         res = s.split('%')
         for i in range(1, len(res)):
             item = res[i]
@@ -240,7 +243,7 @@ class HttpServer:
         args = {}
         args_list = value.split('&')
         for arg in args_list:
-            arg_parts = arg.split('=')
+            arg_parts = arg.split('=', 1)
             if len(arg_parts) == 2:
                 args[cls.url_unquote(arg_parts[0])] = cls.url_unquote(arg_parts[1])
         return args
@@ -270,14 +273,14 @@ class HttpServer:
             protocol = pieces[2]
             # should validate protocol here...
             if b'?' in target:
-                pieces = target.split(b'?')
+                pieces = target.split(b'?', 1)
                 target = pieces[0]
                 query_args = pieces[1]
             else:
                 query_args = b''
             if verb not in [HTTP_VERB_GET, HTTP_VERB_POST]:
                 http_status = HTTP_STATUS_BAD_REQUEST
-                logging.warning(b'Bad request, wrong verb {verb}', 'http_server:serve_http_client')
+                logging.warning(f'Bad request, wrong verb {verb}', 'http_server:serve_http_client')
                 response = b'<html><body><p>only GET and POST are supported</p></body></html>'
                 bytes_sent = await self.send_simple_response(writer, http_status, self.CT_TEXT_HTML, response)
             elif protocol not in {b'HTTP/1.0', b'HTTP/1.1'}:
@@ -298,12 +301,12 @@ class HttpServer:
                     if b':' not in header:  # ignore malformed header
                         continue
                     parts = header.split(b':', 1)
-                    header_name = parts[0].strip()
+                    header_name = parts[0].strip().lower()
                     header_value = parts[1].strip()
                     request_headers[header_name] = header_value
-                    if header_name == b'Content-Length':
-                        request_content_length = int(header_value)
-                    elif header_name == b'Content-Type':
+                    if header_name == b'content-length':
+                        request_content_length = safe_int(header_value, -1)
+                    elif header_name == b'content-type':
                         request_content_type = header_value
                 args = {}
                 if verb == HTTP_VERB_GET:
@@ -397,7 +400,15 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
     if verb == HTTP_VERB_POST:
         logging.debug('http post handler', 'http_server:api_upload_file_callback')
         boundary = None
-        request_content_type = request_headers.get(b'Content-Type') or b''
+        request_content_type = b''
+        request_content_length = -1
+        for header_name in request_headers.keys():
+            lower_header_name = header_name.lower()
+            if lower_header_name == b'content-type':
+                request_content_type = request_headers.get(header_name)
+            elif lower_header_name == b'content-length':
+                request_content_length = safe_int(request_headers.get(header_name), -1)
+
         if b';' in request_content_type:
             pieces = request_content_type.split(b';')
             request_content_type = pieces[0]
@@ -410,8 +421,10 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
         else:
             response = b'unhandled problem'
             http_status = HTTP_STATUS_INTERNAL_SERVER_ERROR
-            request_content_length = safe_int(request_headers.get(b'Content-Length') or '0', 0)
-            if request_content_length == 0:
+            if request_content_length == -1:
+                response = b'invalid Content-Length'
+                http_status = HTTP_STATUS_BAD_REQUEST
+            elif request_content_length == 0:
                 response = b'file is too small'
                 http_status = HTTP_STATUS_LENGTH_REQUIRED
             elif request_content_length > _MAX_UPLOAD_SIZE:
@@ -441,7 +454,8 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                     while start < len(buffer):
                         if state == _MP_DATA:
                             if not output_file:
-                                output_file = open(http.content_dir + 'uploaded_' + filename, 'wb')
+                                output_filename = _safe_content_path(http.content_dir, 'uploaded_' + str(filename))
+                                output_file = open(output_filename, 'wb')
                             idx = buffer.find(search_boundary, start)
                             if idx != -1:
                                 output_file.write(buffer[start:idx])
@@ -504,7 +518,7 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
 async def api_remove_file_callback(http, verb, args, reader, writer, request_headers=None):
     filename = args.get('filename')
     if valid_filename(filename) and filename not in HttpServer.DANGER_ZONE_FILE_NAMES:
-        filename = http.content_dir + filename
+        filename = _safe_content_path(http.content_dir, filename)
         try:
             os.remove(filename)
             http_status = HTTP_STATUS_OK
@@ -524,8 +538,8 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
     filename = args.get('filename')
     newname = args.get('newname')
     if valid_filename(filename) and valid_filename(newname):
-        filename = http.content_dir + filename
-        newname = http.content_dir + newname
+        filename = _safe_content_path(http.content_dir, filename)
+        newname = _safe_content_path(http.content_dir, newname)
         if file_size(newname) >= 0:
             http_status = HTTP_STATUS_CONFLICT
             response = f'new file {newname} already exists'.encode('utf-8')
