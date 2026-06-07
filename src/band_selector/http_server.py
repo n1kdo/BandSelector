@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.15'  # 2026-05-25
+__version__ = '0.1.16'  # 2026-05-29
 
 import asyncio
 import gc
@@ -151,8 +151,7 @@ class HttpServer:
             return (await self.send_simple_response(writer, HTTP_STATUS_FORBIDDEN, self.CT_TEXT_HTML, response),
                     HTTP_STATUS_FORBIDDEN)
         try:
-            content_length = os.stat(filename)[6]
-            content_length = safe_int(content_length, -1)
+            content_length = file_size(filename)
         except OSError:
             content_length = -1
         if content_length < 0:
@@ -164,7 +163,7 @@ class HttpServer:
         await self.start_response(writer, HTTP_STATUS_OK, content_type, content_length)
         try:
             async with self._content_lock:
-                with open(filename, 'rb', _BUFFER_SIZE) as infile:
+                with open(filename, 'rb', buffering=_BUFFER_SIZE) as infile:
                     bytes_since_drain = 0
                     # Drain after roughly 16 KB or at EOF to reduce syscall overhead while preventing buffer bloat.
                     drain_threshold = _BUFFER_SIZE * 4
@@ -177,10 +176,10 @@ class HttpServer:
                                 await writer.drain()
                                 bytes_since_drain = 0
                         if bytes_read < _BUFFER_SIZE:
-                            # EOF reached; ensure pending bytes are flushed.
-                            if bytes_since_drain:
-                                await writer.drain()
                             break
+                    # EOF reached; ensure pending bytes are flushed.
+                    if bytes_since_drain:
+                        await writer.drain()
         except Exception as exc:
             logging.exception(f'error serving {filename}', 'http_server:serve_content', exc_info=exc)
         return content_length, HTTP_STATUS_OK
@@ -380,7 +379,8 @@ def valid_filename(filename):
 
 def file_size(filename):
     try:
-        return os.stat(filename)[6]
+        # note that micropython os.stat()does not return a named tuple, so cannot access with .st_size
+        return safe_int(os.stat(filename)[6], -1)
     except OSError:
         return -1
 
@@ -445,69 +445,74 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                 output_file = None
                 more_bytes = True
                 leftover_bytes = b''
-                while more_bytes:
-                    buffer = await reader.read(_BUFFER_SIZE)
-                    remaining_content_length -= len(buffer)
-                    if remaining_content_length <= 0:
-                        more_bytes = False
-                    if len(leftover_bytes) != 0:
-                        buffer = leftover_bytes + buffer
-                        leftover_bytes = b''
-                    start = 0
-                    while start < len(buffer):
-                        if state == _MP_DATA:
-                            if not output_file:
-                                output_filename = _safe_content_path(http.content_dir, 'uploaded_' + str(filename))
-                                output_file = open(output_filename, 'wb')
-                            idx = buffer.find(search_boundary, start)
-                            if idx != -1:
-                                output_file.write(buffer[start:idx])
-                                state = _MP_END_BOUND
-                                output_file.close()
-                                output_file = None
-                                response = b'Uploaded "uploaded_%s" successfully' % filename.encode()
-                                http_status = HTTP_STATUS_CREATED
-                                start = idx + 2  # Advance past \r\n so the next line parsed is the boundary itself
-                            else:
-                                if more_bytes and len(buffer) - start > keep_len:
-                                    leftover_bytes = buffer[-keep_len:]
-                                    output_file.write(buffer[start:-keep_len])
-                                    start = len(buffer)
+                try:
+                    while more_bytes:
+                        buffer = await reader.read(_BUFFER_SIZE)
+                        remaining_content_length -= len(buffer)
+                        if remaining_content_length <= 0:
+                            more_bytes = False
+                        if len(leftover_bytes) != 0:
+                            buffer = leftover_bytes + buffer
+                            leftover_bytes = b''
+                        start = 0
+                        while start < len(buffer):
+                            if state == _MP_DATA:
+                                if not output_file:
+                                    output_filename = _safe_content_path(http.content_dir, 'uploaded_' + str(filename))
+                                    output_file = open(output_filename, 'wb')
+                                idx = buffer.find(search_boundary, start)
+                                if idx != -1:
+                                    output_file.write(buffer[start:idx])
+                                    state = _MP_END_BOUND
+                                    output_file.close()
+                                    output_file = None
+                                    response = b'Uploaded "uploaded_%s" successfully' % filename.encode()
+                                    http_status = HTTP_STATUS_CREATED
+                                    start = idx + 2  # Advance past \r\n so the next line parsed is the boundary itself
                                 else:
-                                    output_file.write(buffer[start:])
-                                    start = len(buffer)
-                        else:  # must be reading headers or boundary
-                            idx = buffer.find(b'\r\n', start)
-                            if idx != -1:
-                                line = buffer[start:idx]
-                                start = idx + 2
-                                if state == _MP_START_BOUND:
-                                    if line == start_boundary or line == b'':
-                                        if line == start_boundary:
-                                            state = _MP_HEADERS
-                                elif state == _MP_HEADERS:
-                                    if len(line) == 0:
-                                        state = _MP_DATA
-                                    elif line.startswith(b'Content-Disposition:'):
-                                        pieces = line.split(b';')
-                                        if len(pieces) >= 3:
-                                            fn = pieces[2].strip()
-                                            if fn.startswith(b'filename="'):
-                                                filename = fn[10:-1].decode()
-                                                if not valid_filename(filename):
-                                                    response = b'bad filename'
-                                                    http_status = HTTP_STATUS_BAD_REQUEST
-                                                    more_bytes = False
-                                                    start = len(buffer)
-                                elif state == _MP_END_BOUND:
-                                    if line == end_boundary or line == start_boundary or line == b'--':
-                                        state = _MP_START_BOUND
-                            else:
-                                if more_bytes:
-                                    leftover_bytes = buffer[start:]
-                                    start = len(buffer)
+                                    if more_bytes and len(buffer) - start > keep_len:
+                                        leftover_bytes = buffer[-keep_len:]
+                                        output_file.write(buffer[start:-keep_len])
+                                        start = len(buffer)
+                                    else:
+                                        output_file.write(buffer[start:])
+                                        start = len(buffer)
+                            else:  # must be reading headers or boundary
+                                idx = buffer.find(b'\r\n', start)
+                                if idx != -1:
+                                    line = buffer[start:idx]
+                                    start = idx + 2
+                                    if state == _MP_START_BOUND:
+                                        if line == start_boundary or line == b'':
+                                            if line == start_boundary:
+                                                state = _MP_HEADERS
+                                    elif state == _MP_HEADERS:
+                                        if len(line) == 0:
+                                            state = _MP_DATA
+                                        elif line.startswith(b'Content-Disposition:'):
+                                            pieces = line.split(b';')
+                                            if len(pieces) >= 3:
+                                                fn = pieces[2].strip()
+                                                if fn.startswith(b'filename="'):
+                                                    filename = fn[10:-1].decode()
+                                                    if not valid_filename(filename):
+                                                        response = b'bad filename'
+                                                        http_status = HTTP_STATUS_BAD_REQUEST
+                                                        more_bytes = False
+                                                        start = len(buffer)
+                                    elif state == _MP_END_BOUND:
+                                        if line == end_boundary or line == start_boundary or line == b'--':
+                                            state = _MP_START_BOUND
                                 else:
-                                    start = len(buffer)
+                                    if more_bytes:
+                                        leftover_bytes = buffer[start:]
+                                        start = len(buffer)
+                                    else:
+                                        start = len(buffer)
+                finally:
+                    if output_file is not None:
+                        output_file.close()
+                        output_file = None
         logging.info(f'upload response: {response}', 'http_server:api_upload_file_callback')
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_TEXT_TEXT, response)
     else:
