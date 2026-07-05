@@ -1,8 +1,8 @@
 __author__ = 'J. B. Otterson'
-__copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.2'
+__copyright__ = 'Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.'
+__version__ = '0.1.3'  # 2026-07-05
 #
-# Copyright 2024, 2025, J. B. Otterson N1KDO.
+# Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
 #
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@ from machine import Pin
 import micropython
 
 class FourBits:
-    __slots__ = ('_debounce_ms', '_pins', '_queue', '_base_msg', '_last')
+    __slots__ = ('_pins', '_queue', '_base_msg', '_last')
     _debounce_ms = 50
 
     def __init__(self, pins, queue, base_msg):
