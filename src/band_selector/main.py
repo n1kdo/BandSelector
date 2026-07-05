@@ -789,8 +789,8 @@ async def net_msg_func(message: str, msg_status=0) -> None:
 
 
 async def put_timer_message(msg):
-    if logging.should_log(logging.INFO):
-        logging.info(f'put timer message: {msg}')
+    if logging.should_log(logging.DEBUG):
+        logging.debug(f'put timer message: {msg}')
     await msgq.put(msg)
 
 
