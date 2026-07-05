@@ -215,6 +215,8 @@ async def api_response(resp, msg, q):
         logging.exception('did not read payload', 'main:api_response', ex)
         payload = b'api read error'
         status = _API_STATUS_READ_ERROR
+    finally:
+        resp.close()
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (status, payload)  # copy the existing http status from the msg tuple
@@ -744,6 +746,10 @@ async def msg_loop(q):
                 else:
                     logging.warning(f'unexpected msg_switch_name {msg_switch_name}, want switch_name {switch_name}',
                                     'main:msg_loop:_MSG_UDP_RESPONSE')
+            elif len(m1) == 0:  # unchanged UDP message, just reset the timer.
+                # reset switch message timer.
+                if udp_timeout_timer >= 0:
+                    timer_mgr.reset_timer(udp_timeout_timer)
             else:
                 logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
                               'main:msg_loop:_MSG_UDP_RESPONSE')

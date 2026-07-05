@@ -171,6 +171,7 @@ class ReceiveBroadcasts:
         self.msgq = message_queue
         self.msgid = message_id
         self.buf = bytearray(STATUS_BROADCAST_SIZE)
+        self.last_buf = None
         self.run = True
         try:
             sockaddr = socket.getaddrinfo(receive_ip, receive_port)[0][-1]
@@ -197,16 +198,23 @@ class ReceiveBroadcasts:
                 else:
                     # if logging.should_log(logging.DEBUG):
                     #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
-                    stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
-                    data = []
-                    for item in stuff:
-                        if isinstance(item, bytes):
-                            item = item.partition(b'\0')[0].decode()
-                        data.append(item)
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
-                    msg = (self.msgid, data)
-                    await self.msgq.put(msg)
+                    if self.buf != self.last_buf:
+                        self.last_buf = memoryview(self.buf)
+                        stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
+                        data = []
+                        for item in stuff:
+                            if isinstance(item, bytes):
+                                item = item.partition(b'\0')[0].decode()
+                            data.append(item)
+                        if logging.should_log(logging.DEBUG):
+                            logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                        msg = (self.msgid, data)
+                        await self.msgq.put(msg)
+                    else:
+                        logging.debug('unchanged UDP message, sending heartbeat only.', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                        msg = (self.msgid, [])
+                        await self.msgq.put(msg)
+
             except OSError:
                 # this is a timeout exception, no data was received, this is not abnormal.
                 pass
