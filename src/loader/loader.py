@@ -23,10 +23,35 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 __version__ = '0.10.8'  # 2026-04-27
 
 """
-Note: to edit linux forced device names, edit
-/etc/udev/rules.d/99-usb-serial.rules
-see: https://programmador.com/posts/2023/linux-usb-serial-device-name-binding/
-see: https://k4sbc.com/consistently-name-usb-serial-ports/
+to edit linux forced device names...
+
+short instructions:
+* plug in the PICO
+* look at dmesg output to find the device name, example ttyACM0
+* find the serial number of the device: 
+  `udevadm info -a -n /dev/ttyACM0`
+  
+now edit /etc/udev/rules.d/99-usb-serial.rules : 
+
+$ cat /etc/udev/rules.d/99-usb-serial.rules 
+#
+# see https://k4sbc.com/consistently-name-usb-serial-ports/
+# see https://programmador.com/posts/2023/linux-usb-serial-device-name-binding/
+#
+# run 
+#   `udevadm control --reload-rules`
+#   `udevadm trigger` 
+#after making the change.
+#
+# dual serial proto board
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="e6614104034d342f", SYMLINK+="dualser0", MODE="660", GROUP="dialout"
+# Band Selector proto, partly populated, on my desk.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="bbcf8c4141fd00de", SYMLINK+="bsproto0", MODE="660", GROUP="dialout"
+# loose Pico2W on my desk
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="63c1a9f7e99e5ad2", SYMLINK+="pico2w0", MODE="660", GROUP="dialout"
+# 2nd loose Pico2W on my desk
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="8154976b48b4c5b2", SYMLINK+="pico2w1", MODE="660", GROUP="dialout"
+
 """
 import argparse
 import hashlib
