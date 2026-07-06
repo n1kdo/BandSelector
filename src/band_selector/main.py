@@ -215,8 +215,6 @@ async def api_response(resp, msg, q):
         logging.exception('did not read payload', 'main:api_response', ex)
         payload = b'api read error'
         status = _API_STATUS_READ_ERROR
-    # finally:
-    #     resp.close()
     if logging.should_log(logging.DEBUG):
         logging.debug(f'api call returned {payload}', 'main:api_response')
     data = (status, payload)  # copy the existing http status from the msg tuple
