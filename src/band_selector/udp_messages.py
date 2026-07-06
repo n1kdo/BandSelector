@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.6'  # 2026-05-25
+__version__ = '0.0.7'  # 2026-07-6
 
 import asyncio
 import micro_logging as logging
@@ -199,7 +199,7 @@ class ReceiveBroadcasts:
                     # if logging.should_log(logging.DEBUG):
                     #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                     if self.buf != self.last_buf:
-                        self.last_buf[:len(self.buf)] = self.buf
+                        self.last_buf[:STATUS_BROADCAST_SIZE] = self.buf
                         stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
                         data = []
                         for item in stuff:
