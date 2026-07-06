@@ -171,7 +171,7 @@ class ReceiveBroadcasts:
         self.msgq = message_queue
         self.msgid = message_id
         self.buf = bytearray(STATUS_BROADCAST_SIZE)
-        self.last_buf = None
+        self.last_buf = bytearray(STATUS_BROADCAST_SIZE)
         self.run = True
         try:
             sockaddr = socket.getaddrinfo(receive_ip, receive_port)[0][-1]
@@ -199,7 +199,7 @@ class ReceiveBroadcasts:
                     # if logging.should_log(logging.DEBUG):
                     #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                     if self.buf != self.last_buf:
-                        self.last_buf = memoryview(self.buf)
+                        self.last_buf[:len(self.buf)] = self.buf
                         stuff = unpack(STATUS_BROADCAST_FMT, self.buf)
                         data = []
                         for item in stuff:
