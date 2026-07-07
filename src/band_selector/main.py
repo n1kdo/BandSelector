@@ -748,6 +748,15 @@ async def msg_loop(q):
                 # reset switch message timer.
                 if udp_timeout_timer >= 0:
                     timer_mgr.reset_timer(udp_timeout_timer)
+                switch_timeouts = 0
+                if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
+                    set_inhibit(0)
+                    if len(band_antennae) > 1:
+                        display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                    else:
+                        display_antenna_name = current_antenna_name
+                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
+
             else:
                 logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
                               'main:msg_loop:_MSG_UDP_RESPONSE')
