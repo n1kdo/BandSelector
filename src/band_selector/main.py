@@ -650,6 +650,9 @@ async def msg_loop(q):
                 await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
             elif http_status == HTTP_STATUS_OK:
                 logging.debug('antenna request was successful', 'main:msg_loop')
+                if receive_broadcasts is not None:
+                    receive_broadcasts.invalidate()
+
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
@@ -747,7 +750,6 @@ async def msg_loop(q):
             elif len(m1) == 0:  # unchanged UDP message, just reset the timer.
                 # reset switch message timer.
                 if udp_timeout_timer >= 0:
-                    logging.debug(f'resetting udp_timeout_timer', 'main:msg_loop:_MSG_UDP_RESPONSE')
                     timer_mgr.reset_timer(udp_timeout_timer)
                 if not switch_connected:
                     switch_timeouts = 0
