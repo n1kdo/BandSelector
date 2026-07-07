@@ -187,6 +187,12 @@ class ReceiveBroadcasts:
             except Exception:
                 pass
 
+    def invalidate(self):
+        """
+        invalidate the cached last message.
+        """
+        self.last_buf[:STATUS_BROADCAST_SIZE] = b'\0' * STATUS_BROADCAST_SIZE
+
     async def wait_for_datagram(self):
         while self.run:
             try:

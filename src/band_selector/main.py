@@ -747,29 +747,28 @@ async def msg_loop(q):
             elif len(m1) == 0:  # unchanged UDP message, just reset the timer.
                 # reset switch message timer.
                 if udp_timeout_timer >= 0:
+                    logging.debug(f'resetting udp_timeout_timer', 'main:msg_loop:_MSG_UDP_RESPONSE')
                     timer_mgr.reset_timer(udp_timeout_timer)
-                switch_timeouts = 0
-                if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
-                    set_inhibit(0)
-                    if len(band_antennae) > 1:
-                        display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
-                    else:
-                        display_antenna_name = current_antenna_name
-                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
-
+                if not switch_connected:
+                    switch_timeouts = 0
+                    switch_connected = True
+                    logging.debug('switch_connected False to True',
+                                    'main:msg_loop:_MSG_UDP_RESPONSE:')
             else:
                 logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
                               'main:msg_loop:_MSG_UDP_RESPONSE')
         elif m0 == _MSG_UDP_TIMEOUT:
             switch_timeouts += 1
             if logging.should_log(logging.DEBUG):
-                logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:MSG_STATUS_RESPONSE')
+                logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:_MSG_UDP_TIMEOUT')
             if switch_timeouts == 1:
                 if switch_connected:
                     logging.warning('switch_connected True to False transition',
-                                    'main:msg_loop:_MSG_UDP_RESPONSE:')
+                                    'main:msg_loop:_MSG_UDP_TIMEOUT:')
                 set_inhibit(1)
                 switch_connected = False
+                if receive_broadcasts is not None:
+                    receive_broadcasts.invalidate()
                 current_antenna = -1
                 current_antenna_name = 'No Antenna Switch!'
                 display_antenna_name = current_antenna_name
