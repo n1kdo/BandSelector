@@ -1,5 +1,5 @@
 .idea/
 .venv/
 *.bak
-/images/src/*.png
-/images/src/*.jpg
+/images/src/
+/src/band_selector/data/config.json
