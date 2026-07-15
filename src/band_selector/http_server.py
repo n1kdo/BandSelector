@@ -401,7 +401,8 @@ async def api_get_files_callback(http, verb, args, reader, writer, request_heade
 # noinspection PyUnusedLocal
 async def api_upload_file_callback(http, verb, args, reader, writer, request_headers=None):
     if verb == HTTP_VERB_POST:
-        logging.debug('http post handler', 'http_server:api_upload_file_callback')
+        if logging.should_log(logging.DEBUG):
+            logging.debug('http post handler', 'http_server:api_upload_file_callback')
         boundary = None
         request_content_type = b''
         request_content_length = -1
