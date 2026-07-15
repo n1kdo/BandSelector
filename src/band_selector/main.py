@@ -598,7 +598,12 @@ async def msg_loop(q):
                 if receive_broadcasts is not None:
                     receive_broadcasts.stop()
                 receive_broadcasts = None
-                broadcast_receiver_task = None
+                if broadcast_receiver_task is not None:
+                    broadcast_receiver_task.cancel()
+                    broadcast_receiver_task = None
+                if udp_timeout_timer >= 0:
+                    timer_mgr.cancel_timer(udp_timeout_timer)
+                    udp_timeout_timer = -1
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = f'{m1:^20s}'
             if logging.should_log(logging.INFO):
@@ -718,8 +723,8 @@ async def msg_loop(q):
 
                     if not radio_power:
                         errmsg = f'{radio_name} No Power'
-                        # if logging.should_log(logging.DEBUG):  # doesn't matter
-                        logging.debug(errmsg, 'main:msg_loop:NoPower')
+                        if logging.should_log(logging.DEBUG):  # doesn't matter
+                            logging.debug(errmsg, 'main:msg_loop:NoPower')
                         await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
                         set_inhibit(1)
                     else:
@@ -754,8 +759,9 @@ async def msg_loop(q):
                 if not switch_connected:
                     switch_timeouts = 0
                     switch_connected = True
-                    logging.debug('switch_connected False to True',
-                                    'main:msg_loop:_MSG_UDP_RESPONSE:')
+                    if logging.should_log(logging.DEBUG):
+                        logging.debug('switch_connected False to True',
+                                      'main:msg_loop:_MSG_UDP_RESPONSE:')
             else:
                 logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
                               'main:msg_loop:_MSG_UDP_RESPONSE')
