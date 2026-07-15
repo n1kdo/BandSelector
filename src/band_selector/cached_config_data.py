@@ -54,8 +54,9 @@ class CachedConfigData:
         try:
             with open(self._config_file_name, 'r') as config_file:
                 self._config_data = json.load(config_file)
-                logging.debug(f'read configuration from {self._config_file_name}',
-                              'cached_config_data:_write_config_data()')
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'read configuration from {self._config_file_name}',
+                                  'cached_config_data:_write_config_data()')
         except Exception as ex:
             logging.info(f'failed to load configuration from {self._config_file_name},:  {type(ex)}, {ex}',
                          'cached_config_data:_read_config_data()')
