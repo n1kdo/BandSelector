@@ -1,8 +1,8 @@
 # LCD class for Micropython and uasyncio.
 #
 __author__ = 'J. B. Otterson'
-__copyright__ = 'Copyright 2024, 2025 J. B. Otterson N1KDO.'
-__version__ = '0.1.3'  # 2026-04-28
+__copyright__ = 'Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.'
+__version__ = '0.1.4'  # 2026-07-15
 #
 # bastardized from Peter Hinch's alcd.py retrieved from
 #  https://github.com/peterhinch/micropython-async/blob/master/v3/as_drivers/hd44780/alcd.py
@@ -68,7 +68,7 @@ PINLIST = ("Y1", "Y2", "Y6", "Y5", "Y4", "Y3")  # As used in testing.
 
 
 class LCD:  # LCD objects appear as read/write lists
-    __slots__ = ('_LCD_E', '_LCD_RS', '_datapins', '_cols', '_rows', '_lines', '_dirty', '_initialising')
+    __slots__ = ('_LCD_E', '_LCD_RS', '_datapins', '_cols', '_rows', '_lines', '_dirty', '_initialising', '_scratch')
 
     INITSTRING = b"\x33\x32\x28\x0C\x06\x01"
     LCD_LINES = (0x80, 0xC0)  # LCD RAM address for the 1st and 2nd line (0 and 40H)
@@ -84,7 +84,8 @@ class LCD:  # LCD objects appear as read/write lists
         self._datapins = [Pin(pin_name, Pin.OUT) for pin_name in pinlist[2:]]
         self._cols = cols
         self._rows = rows
-        self._lines = [""] * self._rows
+        self._lines = [bytearray([32] * self._cols) for _ in range(self._rows)]
+        self._scratch = bytearray([32] * self._cols)
         self._dirty = [False] * self._rows
         for b in LCD.INITSTRING:
             self.lcd_byte(b, LCD.CMD)
@@ -113,13 +114,36 @@ class LCD:  # LCD objects appear as read/write lists
 
     @micropython.native
     def __setitem__(self, line, message):  # Send string to display line 0 or 1
-        message = "{0:{1}.{1}}".format(message, self._cols)
-        if message != self._lines[line]:  # Only update LCD if data has changed
-            self._lines[line] = message  # Update stored line
+        if isinstance(message, str):
+            print(f'*** WARNING! message is of type {type(message)} "{message}" (in alcd:LCD:__setitem__)')
+            message = message.encode()
+        lm = len(message)
+        if lm >= self._cols:
+            message = message[:self._cols]
+            lm = len(message)
+        center = True
+        if center:
+            left_spaces = (self._cols - lm) // 2
+            right_spaces = self._cols - lm - left_spaces
+        else:
+            left_spaces = 0
+            right_spaces = self._cols - lm
+        i = 0
+        for _ in range(left_spaces):
+            self._scratch[i] = 32
+            i += 1
+        for b in message:
+            self._scratch[i] = b
+            i += 1
+        for _ in range(right_spaces):
+            self._scratch[i] = 32
+            i += 1
+        if self._scratch != self._lines[line]:  # Only update LCD if data has changed
+            self._lines[line][:] = self._scratch  # Update stored line
             self._dirty[line] = True  # Flag its non-correspondence with the LCD device
 
     def __getitem__(self, line):
-        return self._lines[line]
+        return self._lines[line].decode()
 
     @micropython.native
     async def update_lcd(self):

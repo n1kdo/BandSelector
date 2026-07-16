@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.2'  # 2026-01-01
+__version__ = '0.0.3'  # 2026-07-16
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -43,6 +43,7 @@ class CachedConfigData:
         self._config_file_name = config_file_name
         self._dirty = False
         self._config_data = None
+        self._config_data_bytes = {}
         self._deferred_write_timeout = 0
         self._deferred_writer_task = None
 
@@ -63,6 +64,7 @@ class CachedConfigData:
             self._config_data = self._default_config_data()
         finally:
             self._dirty = False
+        self._config_data_bytes = {}
 
     def _write_config_data(self):
         try:
@@ -96,17 +98,39 @@ class CachedConfigData:
             self._read_config_data()
         return self._config_data.get(key, default)
 
+    def get_bytes(self, key, default=None):
+        datab = self._config_data_bytes.get(key)
+        if datab is None:
+            datab = self.get(key, default)
+            if isinstance(datab, str):
+                datab = datab.encode()
+                self._config_data_bytes[key] = datab
+            else:
+                logging.error(f'tried to get bytes value for "{key}" but "{datab}" is not a string',
+                              'cached_config_data:getb')
+                return None
+        return datab
+
     def put(self, key, value):
         old_value = self.get(key)
         if value != old_value:
             self._config_data[key] = value
+            self._config_data_bytes.pop(key, None)
             self._dirty = True
             self._deferred_write_timeout = DEFAULT_WRITE_DELAY
             if self._deferred_writer_task is None:
                 self._deferred_writer_task = asyncio.create_task(self._deferred_writer())
 
+    def put_bytes(self , key, valuebytes):
+        value = valuebytes.decode()
+        self.put(key, value)
+        self._config_data_bytes[key] = valuebytes
+
     def flush(self):
         if self._dirty:
+            if self._deferred_writer_task is not None:
+                self._deferred_writer_task.cancel()
+                self._deferred_writer_task = None
             self._write_config_data()
 
     async def _deferred_writer(self):

@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.21'  # 2026-05-25
+__version__ = '0.1.22'  # 2026-07-15
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -69,8 +69,8 @@ else:
 
 import uaiohttpclient as aiohttp
 
-BANDS = ('NoBand', '160M', '80M', '60M', '40M', '30M', '20M', '17M', '15M', '12M', '10M', '6M', '2M', '70cm', 'NoBand',
-         'NoBand')
+BANDS = (b'NoBand', b'160M', b'80M', b'60M', b'40M', b'30M', b'20M', b'17M',
+         b'15M', b'12M', b'10M', b'6M', b'2M', b'70cm', b'NoBand', b'NoBand')
 MASKS = (0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080, 0x0100, 0x0200, 0x0400, 0x800, 0x1000,
          0x0000, 0x0000)
 # noinspection PyUnboundLocalVariable
@@ -168,9 +168,9 @@ DEFAULT_WEB_PORT = 80
 ap_mode = False
 keep_running = True
 current_antenna = -1
-current_antenna_name = 'Unknown Antenna'
+current_antenna_name = b'Unknown Antenna'
 current_band_number = 0
-radio_name = 'Unknown Rig'
+radio_name = b'Unknown Rig'
 antenna_names = []
 antenna_bands = []
 band_antennae = []  # list of antennas that could work on the current band.
@@ -179,13 +179,13 @@ radio_number = 0
 radio_power = False
 switch_connected = False
 switch_host = None
-switch_name = ''
+switch_name = b''
 switch_timeouts = 0
 receive_broadcasts = None
 broadcast_receiver_task = None
 
 # well-loved status messages
-ui_pages = [['', ''], ['', '']]
+ui_pages = [[b'', b''], [b'', b'']]
 
 # UI state machine data
 _RADIO_DATA_PAGE = const(0)
@@ -344,8 +344,9 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             config['switch_ip'] = switch_ip
         switch_name_arg = args.get('switch_name')
         if switch_name_arg is not None:
-            switch_name = switch_name_arg
+            # switch_name = switch_name_arg
             config['switch_name'] = switch_name_arg
+            switch_name = config.get_bytes('switch_name')
         cfg_auto_on = args.get('auto_on')
         if cfg_auto_on is not None:
             auto_on = bool(safe_int(cfg_auto_on, 0))
@@ -522,6 +523,12 @@ async def update_ui_page(page, line1=None, line2=None):
     global ui_pages
     updated = False
     if 0 <= page < len(ui_pages):
+        if isinstance(line1, str):
+            logging.warning(f'line1 is str: {line1}', 'main:update_ui_page')
+            line1 = line1.encode()
+        if isinstance(line2, str):
+            logging.warning(f'line2 is str: {line2}', 'main:update_ui_page')
+            line2 = line2.encode()
         if line1 is not None and ui_pages[page][0] != line1:
             ui_pages[page][0] = line1
             updated = True
@@ -579,7 +586,7 @@ async def msg_loop(q):
             else:
                 radio_power = False
                 logging.info('radio power is off', 'main:msg_loop')
-                await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} No Power', None)
+                await update_ui_page(_RADIO_DATA_PAGE, b'%s No Power' % radio_name, None)
         elif m0 == _MSG_NETWORK_UPDOWN:
             # network up/down
             if logging.should_log(logging.DEBUG):
@@ -605,18 +612,18 @@ async def msg_loop(q):
                     timer_mgr.cancel_timer(udp_timeout_timer)
                     udp_timeout_timer = -1
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
-            lcd[0] = f'{m1:^20s}'
+            lcd[0] = m1
             if logging.should_log(logging.INFO):
                 logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
         elif m0 == _MSG_LCD_LINE1:  # LCD line 2
-            lcd[1] = f'{m1:^20s}'
+            lcd[1] = m1
             if logging.should_log(logging.INFO):
                 logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
         elif m0 == _MSG_BAND_CHANGE:  # band change detected
             if logging.should_log(logging.INFO):
                 logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
             if not radio_power:
-                await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} No Power', None)
+                await update_ui_page(_RADIO_DATA_PAGE, b'%s No Power' % radio_name, None)
                 set_inhibit(1)
             else:
                 if 0 <= m1 < len(ELECRAFT_BAND_MAP):
@@ -693,36 +700,36 @@ async def msg_loop(q):
                     radio_names = [m1[x + RADIO_NAMES_OFFSET] for x in range(RADIO_NAMES_SIZE)]
                     antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
                     antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug(f'radio_1_antenna: {radio_1_antenna} radio_2_antenna:{radio_2_antenna}' 'main:msg_loop:_MSG_UDP_RESPONSE')
-                        logging.debug(f'radio_names: {radio_names}' 'main:msg_loop:_MSG_UDP_RESPONSE')
-                        logging.debug(f'antenna_names: {antenna_names}', 'main:msg_loop:_MSG_UDP_RESPONSE')
-                        logging.debug(f'antenna_bands: {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                    #if logging.should_log(logging.DEBUG):
+                    #    logging.debug(f'radio_1_antenna: {radio_1_antenna} radio_2_antenna:{radio_2_antenna}' 'main:msg_loop:_MSG_UDP_RESPONSE')
+                    #    logging.debug(f'radio_names: {radio_names}' 'main:msg_loop:_MSG_UDP_RESPONSE')
+                    #    logging.debug(f'antenna_names: {antenna_names}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                    #    logging.debug(f'antenna_bands: {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
 
                     if radio_number == 1 or radio_number == 2:
                         radio_name = radio_names[radio_number - 1]
                     else:
-                        radio_name = f'unknown radio {radio_number}'
+                        radio_name = b'unknown radio %i' % radio_number
                     current_antenna = -1
                     if radio_number == 1:
                         current_antenna = radio_1_antenna
                     elif radio_number == 2:
                         current_antenna = radio_2_antenna
                     if current_antenna == 0:
-                        current_antenna_name = "Antenna DISCONNECTED"
+                        current_antenna_name = b'Antenna DISCONNECTED'
                     elif 1 <= current_antenna <= 8:
                         current_antenna_name = antenna_names[current_antenna - 1]
                     else:
-                        current_antenna_name = f'unknown antenna {current_antenna}'
+                        current_antenna_name = b'unknown antenna %i' % current_antenna
                     if len(band_antennae) > 1:
-                        display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                        display_antenna_name = b'%s + %i' % (current_antenna_name, len(band_antennae) - 1)
                     else:
                         display_antenna_name = current_antenna_name
 
                     await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
 
                     if not radio_power:
-                        errmsg = f'{radio_name} No Power'
+                        errmsg = b'%s No Power' % radio_name
                         if logging.should_log(logging.DEBUG):  # doesn't matter
                             logging.debug(errmsg, 'main:msg_loop:NoPower')
                         await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
@@ -732,15 +739,15 @@ async def msg_loop(q):
                             # this does not look like a valid band choice, read the band data again.
                             band_detector.invalidate()
                         else:
-                            errmsg = f'{radio_name} {BANDS[current_band_number]}'
-                            await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
+                            await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[current_band_number]), None)
                             if current_antenna < 1:
                                 set_inhibit(1)
                             else:
                                 if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
                                     set_inhibit(0)
                                     if len(band_antennae) > 1:
-                                        display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                                        # display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                                        display_antenna_name = b'%s + %i' % (current_antenna_name, len(band_antennae) - 1)
                                     else:
                                         display_antenna_name = current_antenna_name
                                     await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
@@ -790,10 +797,13 @@ async def msg_loop(q):
         #     logging.debug(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
 
 
-async def net_msg_func(message: str, msg_status=0) -> None:
+async def net_msg_func(message: bytes|str, msg_status=0) -> None:
     if logging.should_log(logging.DEBUG):
         logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
-    lines = message.split('\n')
+    if isinstance(message, str):
+        logging.warning(f'*** message is str, converting "{message}"', 'main:net_msg_func')
+        message = message.strip().encode()
+    lines = message.split(b'\n')
     if len(lines) == 1:
         await update_ui_page(_NETWORK_DATA_PAGE, message)
     else:
@@ -818,7 +828,7 @@ async def main():
     radio_number = config.get('radio_number', -1)
     auto_on = config.get('auto_on', False)
     switch_host = config.get('switch_ip', 'localhost').encode()
-    switch_name = config.get('switch_name', 'switch-name')
+    switch_name = config.get_bytes('switch_name', 'switch-name')
     ap_mode = config.get('ap_mode', False)
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
@@ -844,6 +854,12 @@ async def main():
     sleep_ms = asyncio.sleep_ms
     while keep_running:
         await sleep_ms(100)  # asyncio.sleep(1.0)
+        if ten_count == 0 and logging.should_log(logging.DEBUG):
+            gc.collect()
+            free = gc.mem_free()
+            alloc = gc.mem_alloc()
+            logging.debug(f'Memory: {alloc} allocated, {free} free ({free / (free + alloc) * 100:6.2f}% free)')
+
         ten_count += 1
         if ten_count == 10:
             ten_count = 0

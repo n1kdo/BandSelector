@@ -66,6 +66,7 @@ class PicowNetwork:
         self._message_func = message_func
         self._long_messages = long_messages
         self._ssid = config.get('SSID')
+        self._ssid_bytes = config.get_bytes('SSID')
         if not self._ssid or not isinstance(self._ssid, str) or len(self._ssid) > 32:
             self._ssid = default_ssid
         self._secret = config.get('secret')
@@ -77,6 +78,7 @@ class PicowNetwork:
         self._hostname = config.get('hostname')
         if self._hostname is None or self._hostname == '':
             self._hostname = 'pico-w'
+        self._hostname_bytes = config.get_bytes('hostname')
 
         self._access_point_mode = config.get('ap_mode', False)
 
@@ -110,7 +112,7 @@ class PicowNetwork:
     def is_connected(self):
         return self._connected
 
-    async def set_message(self, message: str, status: int = 0) -> None:
+    async def set_message(self, message: bytes, status: int = 0) -> None:
         self._message = message
         self._status = status
         if self._message_func:
@@ -129,7 +131,7 @@ class PicowNetwork:
         onboard.on()
         if self._access_point_mode:
             if self._long_messages:
-                await self.set_message('Starting setup WLAN...')
+                await self.set_message(b'Starting setup WLAN.')
             logging.info('Starting setup WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.WLAN.IF_AP)
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
@@ -142,14 +144,14 @@ class PicowNetwork:
             onboard.on()
             try:
                 if self._long_messages:
-                    await self.set_message(f'Setting hostname "{self._hostname}"')
+                    await self.set_message(b'Setting hostname %s' % self._hostname_bytes)
                 logging.info(f'  Setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:
                 if self._long_messages:
-                    await self.set_message('Failed to set hostname.', -10)
+                    await self.set_message(b'Failed to set hostname.', -10)
                 else:
-                    await self.set_message('ERROR ', -10)
+                    await self.set_message(b'ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
 
             # security choices are 'SEC_OPEN', 'SEC_WPA2_WPA3', 'SEC_WPA3', 'SEC_WPA_WPA2'
@@ -174,7 +176,7 @@ class PicowNetwork:
             self._connected = True
         else:
             if self._long_messages:
-                await self.set_message('Connecting to WLAN...')
+                await self.set_message(b'Connecting to WLAN.')
             logging.info('Connecting to WLAN...', 'PicowNetwork:connect_to_network')
             self._wlan = network.WLAN(network.WLAN.IF_STA)
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
@@ -189,15 +191,15 @@ class PicowNetwork:
             onboard.on()
             try:
                 if self._long_messages:
-                    await self.set_message(f'Setting hostname\n{self._hostname}')
+                    await self.set_message(b'Setting hostname\n%s' % self._hostname_bytes)
                 logging.info(f'...setting hostname "{self._hostname}"', 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
                 logging.debug('Connecting to WLAN...5', 'PicowNetwork:connect_to_network')
             except ValueError:
                 if self._long_messages:
-                    await self.set_message('Failed to set hostname.', -10)
+                    await self.set_message(b'Failed to set hostname.', -10)
                 else:
-                    await self.set_message('ERROR ', -10)
+                    await self.set_message(b'ERROR ', -10)
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
             await sleep(0.1)
@@ -253,7 +255,7 @@ class PicowNetwork:
             connect_timeout = 15
             st = ''
             if self._long_messages:
-                await self.set_message(f'Connecting to\n{self._ssid}')
+                await self.set_message(b'Connecting to\n%s' % self._ssid_bytes)
             try:
                 if bssid is not None:
                     self._wlan.connect(self._ssid, self._secret, bssid=bssid)
@@ -284,9 +286,9 @@ class PicowNetwork:
                 logging.warning(f'...network connect failed: {wl_status}, pausing...',
                                 'PicowNetwork:connect_to_network')
                 if self._long_messages:
-                    await self.set_message(f'Error {wl_status}\n{st}', -wl_status)
+                    await self.set_message(b'Error %d\n%s' % (wl_status, st.encode()), -wl_status)
                 else:
-                    await self.set_message('ERROR ', -wl_status)
+                    await self.set_message(b'ERROR ', -wl_status)
                 try:
                     self._wlan.active(False)
                     await sleep(1)
@@ -310,14 +312,18 @@ class PicowNetwork:
         ssid = self._wlan.config('ssid')
         if self._long_messages:
             if self._access_point_mode:
-                msg = f'{ssid}\nAP: {self._ip_address}'
+                #msg = f'{ssid}\nAP: {self._ip_address}'
+                msg = b'%s\nAP: %s' % (ssid.encode(), self._ip_address.encode())
             else:
-                msg = f'{ssid}\n{self._ip_address}'
+                #msg = f'{ssid}\n{self._ip_address}'
+                msg = b'%s\n%s' % (ssid.encode(), self._ip_address.encode())
         else:
             if self._access_point_mode:
-                msg = f'AP {self._ip_address} '
+                #msg = f'AP {self._ip_address} '
+                msg = b'AP %s' % self._ip_address.encode()
             else:
-                msg = f'{self._ip_address} '
+                #msg = f'{self._ip_address} '
+                msg = self._ip_address.encode()
         await self.set_message(msg, 1)
 
     def ifconfig(self):

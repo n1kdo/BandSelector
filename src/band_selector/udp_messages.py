@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.0.7'  # 2026-07-6
+__version__ = '0.0.8'  # 2026-07-16
 
 import asyncio
 import micro_logging as logging
@@ -77,11 +77,15 @@ def calculate_broadcast_address(ip_address, netmask):
 def _fit_and_encode(s, length):
     """Encode string to bytes, truncate or pad with NUL to length."""
     if s is None:
-        s = ''
-    b = s.encode('utf-8', 'ignore')[:length]
-    if len(b) < length:
-        b = b + (b'\x00' * (length - len(b)))
-    return b
+        s = bytes(length)
+    else:
+        if isinstance(s, str):
+            s = s.encode('utf-8', 'ignore')
+    if len(s) > length:
+        s = s[0:length]
+    if len(s) < length:
+        s = s + (b'\x00' * (length - len(s)))
+    return s
 
 
 class SendBroadcasts:
@@ -116,13 +120,13 @@ class SendBroadcasts:
             antenna_bands = self.config['antenna_bands']
             antennas_selected = self.antennas_selected
             hostname = self.config['hostname']
-            if logging.should_log(logging.DEBUG):
-                logging.debug(f'radio_names: {radio_names}', 'udp_messages:send_datagrams')
-                logging.debug(f'antenna_names: {antenna_names}', 'udp_messages:send_datagrams')
-                logging.debug(f'antenna_bands: {antenna_bands}', 'udp_messages:send_datagrams')
-                logging.debug(f'antennas_selected: {antennas_selected[0]}, {antennas_selected[1]}',
-                              'udp_messages:send_datagrams')
-                logging.debug(f'hostname: {hostname}', 'udp_messages:send_datagrams')
+            #if logging.should_log(logging.DEBUG):
+            #    logging.debug(f'radio_names: {radio_names}', 'udp_messages:send_datagrams')
+            #    logging.debug(f'antenna_names: {antenna_names}', 'udp_messages:send_datagrams')
+            #    logging.debug(f'antenna_bands: {antenna_bands}', 'udp_messages:send_datagrams')
+            #    logging.debug(f'antennas_selected: {antennas_selected[0]}, {antennas_selected[1]}',
+            #                  'udp_messages:send_datagrams')
+            #    logging.debug(f'hostname: {hostname}', 'udp_messages:send_datagrams')
             try:
                 pack_into(STATUS_BROADCAST_FMT, buf, 0,
                           int(antennas_selected[0]),
@@ -198,9 +202,9 @@ class ReceiveBroadcasts:
             try:
                 bytes_in = self.receive_socket.readinto(self.buf)
                 if bytes_in != STATUS_BROADCAST_SIZE:
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug(f'received {bytes_in} but expected {STATUS_BROADCAST_SIZE} bytes.',
-                                      'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                    if logging.should_log(logging.WARNING):
+                        logging.warning(f'received {bytes_in} but expected {STATUS_BROADCAST_SIZE} bytes.',
+                                        'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                 else:
                     # if logging.should_log(logging.DEBUG):
                     #    logging.debug(f'udp_data "{self.buf}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
@@ -210,14 +214,14 @@ class ReceiveBroadcasts:
                         data = []
                         for item in stuff:
                             if isinstance(item, bytes):
-                                item = item.partition(b'\0')[0].decode()
+                                item = item.partition(b'\0')[0]
                             data.append(item)
-                        if logging.should_log(logging.DEBUG):
-                            logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                        #if logging.should_log(logging.DEBUG):
+                        #    logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                         msg = (self.msgid, data)
                         await self.msgq.put(msg)
                     else:
-                        logging.debug('unchanged UDP message, sending heartbeat only.', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                        #logging.debug('unchanged UDP message, sending heartbeat only.', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
                         msg = (self.msgid, [])
                         await self.msgq.put(msg)
 
