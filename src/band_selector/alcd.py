@@ -114,9 +114,9 @@ class LCD:  # LCD objects appear as read/write lists
 
     @micropython.native
     def __setitem__(self, line, message):  # Send string to display line 0 or 1
-        if isinstance(message, str):
-            print(f'*** WARNING! message is of type {type(message)} "{message}" (in alcd:LCD:__setitem__)')
-            message = message.encode()
+        if not isinstance(message, (bytes, bytearray)):
+            print(f'*** ERROR! message is of type {type(message)} "{message}" (in alcd:LCD:__setitem__)')
+            raise TypeError('LCD line data must be bytes')
         lm = len(message)
         if lm >= self._cols:
             message = message[:self._cols]
@@ -143,7 +143,7 @@ class LCD:  # LCD objects appear as read/write lists
             self._dirty[line] = True  # Flag its non-correspondence with the LCD device
 
     def __getitem__(self, line):
-        return self._lines[line].decode()
+        return self._lines[line]  # returns bytearray
 
     @micropython.native
     async def update_lcd(self):
@@ -156,6 +156,6 @@ class LCD:  # LCD objects appear as read/write lists
                     self._dirty[row] = False
                     self.lcd_byte(LCD.LCD_LINES[row], LCD.CMD)
                     for thisbyte in msg:
-                        self.lcd_byte(ord(thisbyte), LCD.CHR)
+                        self.lcd_byte(thisbyte, LCD.CHR)
                         await asleep_ms(0)  # Reschedule ASAP
             await asleep_ms(20)  # Give other coros a look-in

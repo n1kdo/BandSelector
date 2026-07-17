@@ -397,34 +397,46 @@ async def api_restart_callback(http, verb, args, reader, writer, request_headers
 async def api_status_callback(http, verb, args, reader, writer, request_headers=None):  # '/api/status'
     """
     wants to have message looking like this:
-    {
-        "switch_connected": true,
-        "lcd_lines": [
-            "Elecraft K3 No Power",
-            "    6 Meter Yagi    "
-        ],
-        "radio_power": false
-    }
+    {"lcd_lines": ["Elecraft K3 No Power","    6 Meter Yagi    "],
+    "radio_power": false
+    "switch_connected": true
+     }
     """
-    response = {'lcd_lines': [lcd[0], lcd[1]],
-                'radio_power': radio_power,
-                'switch_connected': switch_connected,
-                }
     http_status = HTTP_STATUS_OK
-    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    # very gnarly json creation
+    r = b''.join([
+        b'{\n  "lcd_lines": ["',
+        lcd[0],
+        b'","',
+        lcd[1],
+        b'"],\n  "radio_power": ',
+        b'true' if radio_power else b'false',
+        b',\n  "switch_connected": ',
+        b'true' if switch_connected else b'false',
+        b'\n}'
+    ])
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, r)
+
     return bytes_sent, http_status
 
 
 @http_server.route(b'/api/power_on_radio')
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
-    # send the status response message
-    response = {'lcd_lines': [lcd[0], lcd[1]],
-                'radio_power': radio_power,
-                'switch_connected': switch_connected,
-                }
+    # very gnarly json creation
+    r = b''.join([
+        b'{\n  "lcd_lines": ["',
+        lcd[0],
+        b'","',
+        lcd[1],
+        b'"],\n  "radio_power": ',
+        b'true' if radio_power else b'false',
+        b',\n  "switch_connected": ',
+        b'true' if switch_connected else b'false',
+        b'\n}'
+    ])
     http_status = HTTP_STATUS_OK
-    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
+    bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, r)
     return bytes_sent, http_status
 
 
@@ -460,7 +472,7 @@ def find_band_antennae(new_band_number: int):
     candidates = [(num_bits_set(antenna_bands[i]), i)
                   for i in range(len(antenna_bands))
                   if mask & antenna_bands[i]]
-    candidates.sort()          # sort by bit-count (fewest shared bands first)
+    candidates.sort()  # sort by bit-count (fewest shared bands first)
     return [i for _, i in candidates]
 
 
@@ -481,7 +493,7 @@ async def new_band(new_band_number):
     if new_band_number == 0:
         logging.warning('new band with invalid band number')
         return
-    logging.info(f'new band: {BANDS[new_band_number]}', 'main:new_band')
+    logging.info(b'new band: ' + BANDS[new_band_number], 'main:new_band')
     await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} {BANDS[new_band_number]}', None)
     set_inhibit(1)
     band_antennae = find_band_antennae(new_band_number)
@@ -597,7 +609,7 @@ async def msg_loop(q):
                 if udp_timeout_timer < 0:
                     udp_timeout_timer = timer_mgr.add_timer(delay=5.0,
                                                             callback=put_timer_message,
-                                                            arg=(_MSG_UDP_TIMEOUT, (0, 'udp message timeout')),
+                                                            arg=(_MSG_UDP_TIMEOUT, (0, b'switch message timeout')),
                                                             auto_reset=True)
             else:
                 logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
@@ -614,11 +626,13 @@ async def msg_loop(q):
         elif m0 == _MSG_LCD_LINE0:  # LCD line 1
             lcd[0] = m1
             if logging.should_log(logging.INFO):
-                logging.info(f'LCD0: "{lcd[0]}"', 'main:msg_loop')
+                # logging as bytes
+                logging.info(b'LCD0: "' + lcd[0] + b'"', 'main:msg_loop')
         elif m0 == _MSG_LCD_LINE1:  # LCD line 2
             lcd[1] = m1
             if logging.should_log(logging.INFO):
-                logging.info(f'LCD1: "{lcd[1]}"', 'main:msg_loop')
+                # logging as bytes
+                logging.info(b'LCD1: "' + lcd[1] + b'"', 'main:msg_loop')
         elif m0 == _MSG_BAND_CHANGE:  # band change detected
             if logging.should_log(logging.INFO):
                 logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
@@ -643,22 +657,22 @@ async def msg_loop(q):
             if http_status == _API_STATUS_TIMEOUT:
                 switch_connected = False
                 current_antenna = -1
-                current_antenna_name = '_Switch API Timeout_'
-                #                      '12345678901234567890'
+                current_antenna_name = b'_Switch API Timeout_'
+                #                       '12345678901234567890'
                 await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
                 set_inhibit(1)
             elif http_status == _API_STATUS_ERROR or http_status == _API_STATUS_READ_ERROR:
                 switch_connected = False
                 current_antenna = -1
-                current_antenna_name = '__Switch API Error__'
-                #                      '12345678901234567890'
+                current_antenna_name = b'__Switch API Error__'
+                #                       '12345678901234567890'
                 await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
                 set_inhibit(1)
             elif http_status == 0:  # api call failed
                 switch_connected = False
                 current_antenna = -1
-                current_antenna_name = '_No Antenna Switch!_'
-                #                      '12345678901234567890'
+                current_antenna_name = b'_No Antenna Switch!_'
+                #                       '12345678901234567890'
                 await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
             elif http_status == HTTP_STATUS_OK:
                 logging.debug('antenna request was successful', 'main:msg_loop')
@@ -668,7 +682,7 @@ async def msg_loop(q):
             elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                 if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
                     logging.warning(f'no antenna available for band ')
-                    await update_ui_page(_RADIO_DATA_PAGE, None, f'*{payload}*')
+                    await update_ui_page(_RADIO_DATA_PAGE, None, f'*{payload}*')  # TODO what is payload?
                     set_inhibit(1)
                 else:
                     # if there is another antenna candidate, try to get it
@@ -700,7 +714,7 @@ async def msg_loop(q):
                     radio_names = [m1[x + RADIO_NAMES_OFFSET] for x in range(RADIO_NAMES_SIZE)]
                     antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
                     antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
-                    #if logging.should_log(logging.DEBUG):
+                    # if logging.should_log(logging.DEBUG):
                     #    logging.debug(f'radio_1_antenna: {radio_1_antenna} radio_2_antenna:{radio_2_antenna}' 'main:msg_loop:_MSG_UDP_RESPONSE')
                     #    logging.debug(f'radio_names: {radio_names}' 'main:msg_loop:_MSG_UDP_RESPONSE')
                     #    logging.debug(f'antenna_names: {antenna_names}', 'main:msg_loop:_MSG_UDP_RESPONSE')
@@ -739,7 +753,8 @@ async def msg_loop(q):
                             # this does not look like a valid band choice, read the band data again.
                             band_detector.invalidate()
                         else:
-                            await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[current_band_number]), None)
+                            await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[current_band_number]),
+                                                 None)
                             if current_antenna < 1:
                                 set_inhibit(1)
                             else:
@@ -747,7 +762,8 @@ async def msg_loop(q):
                                     set_inhibit(0)
                                     if len(band_antennae) > 1:
                                         # display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
-                                        display_antenna_name = b'%s + %i' % (current_antenna_name, len(band_antennae) - 1)
+                                        display_antenna_name = b'%s + %i' % (current_antenna_name,
+                                                                             len(band_antennae) - 1)
                                     else:
                                         display_antenna_name = current_antenna_name
                                     await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
@@ -785,7 +801,7 @@ async def msg_loop(q):
                 if receive_broadcasts is not None:
                     receive_broadcasts.invalidate()
                 current_antenna = -1
-                current_antenna_name = 'No Antenna Switch!'
+                current_antenna_name = b'No Antenna Switch!'
                 display_antenna_name = current_antenna_name
                 await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
         else:
@@ -797,7 +813,7 @@ async def msg_loop(q):
         #     logging.debug(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
 
 
-async def net_msg_func(message: bytes|str, msg_status=0) -> None:
+async def net_msg_func(message: bytes | str, msg_status=0) -> None:
     if logging.should_log(logging.DEBUG):
         logging.debug(f'network message: "{message.strip()}", {msg_status}', 'main:net_msg_func')
     if isinstance(message, str):
