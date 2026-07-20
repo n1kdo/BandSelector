@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.1.16'  # 2026-05-29
+__version__ = '0.1.20'  # 2026-07-18
 
 import asyncio
 import gc
@@ -135,15 +135,15 @@ class HttpServer:
 
     def route(self, uri):
         if isinstance(uri, str):
-            logging.warning(f'uri {uri} is str not bytes', 'http_server:add_uri_callback')
-            uri = uri.encode('utf-8')
+            logging.error(f'uri {uri} is str not bytes', 'http_server:route')
+            raise RuntimeError(f'uri {uri} is str not bytes')
 
         def decorator(func):
             self.uri_map[uri] = func
             return func
         return decorator
 
-    async def serve_content(self, writer, filename):
+    async def serve_content(self, writer, filename : str):
         try:
             filename = _safe_content_path(self.content_dir, filename)
         except ValueError:
@@ -204,6 +204,9 @@ class HttpServer:
     async def send_simple_response(self, writer, http_status=HTTP_STATUS_OK, content_type=b'', response=None, extra_headers=None):
         content_length = 0
         typ = type(response)
+        if typ == str:
+            response = response.encode()
+            typ = bytes
         if response is None:
             await self.start_response(writer, http_status, content_type, 0, extra_headers)
         elif typ == bytes:
@@ -212,7 +215,7 @@ class HttpServer:
             if response is not None and len(response) > 0:
                 writer.write(response)
         elif typ in [dict, list]:
-            response = json.dumps(response).encode('utf-8')
+            response = json.dumps(response).encode()  # yes, need to send bytes here.
             content_length = len(response)
             content_type = HttpServer.CT_APP_JSON
             await self.start_response(writer, http_status, content_type, content_length, extra_headers)
@@ -225,29 +228,30 @@ class HttpServer:
 
     @classmethod
     def url_unquote(cls, s):
-        s = s.replace('+', ' ')
-        res = s.split('%')
+        s = s.replace(b'+', b' ')
+        res = s.split(b'%')
         for i in range(1, len(res)):
             item = res[i]
             try:
-                res[i] = chr(int(item[:2], 16)) + item[2:]
+                res[i] = bytes([int(item[:2], 16)]) + item[2:]
             except ValueError:
-                res[i] = '%' + item
-        return "".join(res)
+                res[i] = b'%' + item
+        return b"".join(res)
 
     @classmethod
-    def unpack_args(cls, value):
+    def unpack_args(cls, value : bytes):
+        """
+        accept a byte string and unpack it into a dict(str, str)
+        """
         if not value:
             return {}
-        # Accept bytes or str; decode only if needed to avoid extra allocations and errors.
-        if isinstance(value, bytes):
-            value = value.decode()
         args = {}
-        args_list = value.split('&')
+        args_list = value.split(b'&')
         for arg in args_list:
-            arg_parts = arg.split('=', 1)
+            arg_parts = arg.split(b'=', 1)
             if len(arg_parts) == 2:
-                args[cls.url_unquote(arg_parts[0])] = cls.url_unquote(arg_parts[1])
+                args[cls.url_unquote(arg_parts[0]).decode()] = cls.url_unquote(arg_parts[1].decode())
+        logging.info(f'unpack_args: {value} -> {args}', 'http_server:unpack_args')
         return args
 
     async def serve_http_client(self, reader, writer):
@@ -259,10 +263,10 @@ class HttpServer:
         partner = writer.get_extra_info('peername')[0]
         if logging.should_log(logging.DEBUG):
             logging.debug(f'web client connected from {partner}', 'http_server:serve_http_client')
-        request_line = await reader.readline()
+        request_line = await reader.readline()  # returns bytes
         request = request_line.strip()
         if logging.should_log(logging.DEBUG):
-            logging.debug(f'request: {request}', 'http_server:serve_http_client')
+            logging.debug(b'request: %s' % request, 'http_server:serve_http_client')
         pieces = request.split(b' ')
         if len(pieces) != 3:  # does the http request line look approximately correct?
             http_status = HTTP_STATUS_BAD_REQUEST
@@ -327,7 +331,7 @@ class HttpServer:
                                     args = self.unpack_args(data)
                                 elif request_content_type.startswith(self.CT_APP_JSON):
                                     try:
-                                        args = json.loads(data.decode())
+                                        args = json.loads(data)
                                     except Exception as e:
                                         args = {}
                                         logging.error(f'cannot decode posted JSON "{data}": {e}',
@@ -348,8 +352,8 @@ class HttpServer:
                     if callback is not None:
                         bytes_sent, http_status = await callback(self, verb, args, reader, writer, request_headers)
                     else:
-                        content_file = target[1:] if target.startswith(b'/') else target
-                        bytes_sent, http_status = await self.serve_content(writer, content_file.decode())
+                        content_file = (target[1:] if target.startswith(b'/') else target).decode()  # filename must be str
+                        bytes_sent, http_status = await self.serve_content(writer, content_file)
 
         await writer.drain()
         writer.close()
@@ -363,7 +367,7 @@ class HttpServer:
 #
 # common file operations callbacks, here because just about every app will use them...
 #
-def valid_filename(filename):
+def valid_filename(filename : str):
     if filename is None:
         return False
     match = re.match(r'^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9_-]+$', filename)
@@ -377,7 +381,7 @@ def valid_filename(filename):
     return True
 
 
-def file_size(filename):
+def file_size(filename : str):
     try:
         # note that micropython os.stat()does not return a named tuple, so cannot access with .st_size
         return safe_int(os.stat(filename)[6], -1)
@@ -467,7 +471,7 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
                                     state = _MP_END_BOUND
                                     output_file.close()
                                     output_file = None
-                                    response = b'Uploaded "uploaded_%s" successfully' % filename.encode()
+                                    response = b'Uploaded "uploaded_%s" successfully' % filename
                                     http_status = HTTP_STATUS_CREATED
                                     start = idx + 2  # Advance past \r\n so the next line parsed is the boundary itself
                                 else:
@@ -527,14 +531,14 @@ async def api_upload_file_callback(http, verb, args, reader, writer, request_hea
 async def api_remove_file_callback(http, verb, args, reader, writer, request_headers=None):
     filename = args.get('filename')
     if valid_filename(filename) and filename not in HttpServer.DANGER_ZONE_FILE_NAMES:
-        filename = _safe_content_path(http.content_dir, filename)
+        delete_filename = _safe_content_path(http.content_dir, filename)
         try:
-            os.remove(filename)
+            os.remove(delete_filename)
             http_status = HTTP_STATUS_OK
-            response = f'removed {filename}'.encode('utf-8')
+            response = f'removed {filename}'
         except OSError as ose:
             http_status = HTTP_STATUS_CONFLICT
-            response = str(ose).encode('utf-8')
+            response = str(ose)
     else:
         http_status = HTTP_STATUS_CONFLICT
         response = b'bad file name'
@@ -547,19 +551,19 @@ async def api_rename_file_callback(http, verb, args, reader, writer, request_hea
     filename = args.get('filename')
     newname = args.get('newname')
     if valid_filename(filename) and valid_filename(newname):
-        filename = _safe_content_path(http.content_dir, filename)
-        newname = _safe_content_path(http.content_dir, newname)
-        if file_size(newname) >= 0:
+        content_filename = _safe_content_path(http.content_dir, filename)
+        content_newname = _safe_content_path(http.content_dir, newname)
+        if file_size(content_newname) >= 0:
             http_status = HTTP_STATUS_CONFLICT
-            response = f'new file {newname} already exists'.encode('utf-8')
+            response = f'new file {newname} already exists'
         else:
             try:
-                os.rename(filename, newname)
+                os.rename(content_filename, content_newname)
                 http_status = HTTP_STATUS_OK
-                response = f'renamed {filename} to {newname}'.encode('utf-8')
+                response = f'renamed {filename} to {newname}'
             except Exception as ose:
                 http_status = HTTP_STATUS_CONFLICT
-                response = str(ose).encode('utf-8')
+                response = str(ose)
     else:
         http_status = HTTP_STATUS_CONFLICT
         response = b'bad file name'
