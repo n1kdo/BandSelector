@@ -191,7 +191,10 @@ class HttpServer:
         if content_type is not None and len(content_type) > 0:
             writer.write(b'Content-type: ')
             writer.write(content_type)
-            writer.write(b'; charset=UTF-8\r\n')
+            if content_type in (HttpServer.CT_TEXT_TEXT, HttpServer.CT_TEXT_HTML, HttpServer.CT_APP_JSON):
+                writer.write(b'; charset=UTF-8\r\n')
+            else:
+                writer.write(b'\r\n')
         if response_size >= 0:
             writer.write(b'Content-length: %d\r\n' % response_size)
         if extra_headers is not None:
@@ -251,7 +254,8 @@ class HttpServer:
             arg_parts = arg.split(b'=', 1)
             if len(arg_parts) == 2:
                 args[cls.url_unquote(arg_parts[0].decode())] = cls.url_unquote(arg_parts[1].decode())
-        logging.info(f'unpack_args: {value} -> {args}', 'http_server:unpack_args')
+        if logging.should_log(logging.DEBUG):
+            logging.debug(f'unpack_args: {value} -> {args}', 'http_server:unpack_args')
         return args
 
     async def serve_http_client(self, reader, writer):
