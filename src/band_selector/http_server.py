@@ -227,16 +227,16 @@ class HttpServer:
         return content_length
 
     @classmethod
-    def url_unquote(cls, s):
-        s = s.replace(b'+', b' ')
-        res = s.split(b'%')
+    def url_unquote(cls, s : str):
+        s = s.replace('+', ' ')
+        res = s.split('%')
         for i in range(1, len(res)):
             item = res[i]
             try:
-                res[i] = bytes([int(item[:2], 16)]) + item[2:]
+                res[i] = chr(int(item[:2], 16)) + item[2:]
             except ValueError:
-                res[i] = b'%' + item
-        return b"".join(res)
+                res[i] = '%' + item
+        return ''.join(res)
 
     @classmethod
     def unpack_args(cls, value : bytes):
@@ -250,7 +250,7 @@ class HttpServer:
         for arg in args_list:
             arg_parts = arg.split(b'=', 1)
             if len(arg_parts) == 2:
-                args[cls.url_unquote(arg_parts[0]).decode()] = cls.url_unquote(arg_parts[1].decode())
+                args[cls.url_unquote(arg_parts[0].decode())] = cls.url_unquote(arg_parts[1].decode())
         logging.info(f'unpack_args: {value} -> {args}', 'http_server:unpack_args')
         return args
 
