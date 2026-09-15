@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.24'  # 2026-09-15
+__version__ = '0.1.25'  # 2026-09-15
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -452,7 +452,7 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
     # lines carry antenna names from the switch controller that may contain
     # quotes or backslashes and must be escaped.
     r = {
-        'lcd_lines': [lcd[0], lcd[1]],
+        'lcd_lines': [lcd[0].decode(), lcd[1].decode()],
         'radio_power': radio_power,
         'switch_connected': switch_connected,
     }
@@ -540,7 +540,7 @@ async def new_band(new_band_number):
     else:
         if switch_connected:
             logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
-            await update_ui_page(_RADIO_DATA_PAGE, None, 'Requesting Antenna')
+            await update_ui_page(_RADIO_DATA_PAGE, None, b'Requesting Antenna')
             current_antenna_list_index = 0
             await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
                                           (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
