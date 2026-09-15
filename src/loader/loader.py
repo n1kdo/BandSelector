@@ -20,38 +20,13 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = '0.10.8'  # 2026-04-27
+__version__ = '0.10.9'  # 2026-09-04
 
 """
-to edit linux forced device names...
-
-short instructions:
-* plug in the PICO
-* look at dmesg output to find the device name, example ttyACM0
-* find the serial number of the device: 
-  `udevadm info -a -n /dev/ttyACM0`
-  
-now edit /etc/udev/rules.d/99-usb-serial.rules : 
-
-$ cat /etc/udev/rules.d/99-usb-serial.rules 
-#
-# see https://k4sbc.com/consistently-name-usb-serial-ports/
-# see https://programmador.com/posts/2023/linux-usb-serial-device-name-binding/
-#
-# run 
-#   `udevadm control --reload-rules`
-#   `udevadm trigger` 
-#after making the change.
-#
-# dual serial proto board
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="e6614104034d342f", SYMLINK+="dualser0", MODE="660", GROUP="dialout"
-# Band Selector proto, partly populated, on my desk.
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="bbcf8c4141fd00de", SYMLINK+="bsproto0", MODE="660", GROUP="dialout"
-# loose Pico2W on my desk
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="63c1a9f7e99e5ad2", SYMLINK+="pico2w0", MODE="660", GROUP="dialout"
-# 2nd loose Pico2W on my desk
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0005", ATTRS{serial}=="8154976b48b4c5b2", SYMLINK+="pico2w1", MODE="660", GROUP="dialout"
-
+Note: to edit linux forced device names, edit
+/etc/udev/rules.d/99-usb-serial.rules
+see: https://programmador.com/posts/2023/linux-usb-serial-device-name-binding/
+see: https://k4sbc.com/consistently-name-usb-serial-ports/
 """
 import argparse
 import hashlib
@@ -113,11 +88,17 @@ def put_file(filename, target, source_directory='.', src_file_name=None):
     else:
         try:
             os.stat(src_file_name)
+        except OSError:
+            print(f'cannot find source file {src_file_name}')
+            return False
+        try:
             print(f'sending file {src_file_name} to {filename}')
             target.fs_put(src_file_name, filename, progress_callback=put_file_progress_callback)
             print()
-        except OSError:
-            print(f'cannot find source file {src_file_name}')
+        except (OSError, SerialException) as exc:
+            # a transient USB/serial glitch surfaces here; the local file is fine.
+            # the next loader run re-sends any partially written file (sha1 mismatch).
+            print(f'error sending {src_file_name}: {exc}')
             return False
     return True
 
@@ -163,12 +144,9 @@ for f in uos.ilistdir('{src}'):
 
 
 def loader_reset(target):
-    files_data = BytesConcatenator()
-    cmd = f"""import machine
-machine.reset()
-"""
-    target.exec_(cmd, data_consumer=files_data.write_bytes)
-
+    time.sleep(2)
+    target.serial.write(b"\x04")  # control-D -- restart
+    time.sleep(2)
 
 def loader_sha1(target, file=''):
     hash_data = BytesConcatenator()
@@ -228,20 +206,23 @@ def load_device(port, force=False,
             restart = True
 
     if restart:
+        disconnected = False
         try:
+            target.close()
+            disconnected = True
             print('resetting target device...')
-            loader_reset(target)
         except SerialException as e:
+            print('got serial exception, must have disconnected...')
+            disconnected = True
             time.sleep(3)
-        else:
-            print('expected disconnect on reset, something is wrong?')
 
-        try:
-            print('reconnecting to target device...')
-            target = Pyboard(port, _BAUD_RATE)
-        except PyboardError:
-            print(f'cannot connect to device {port}')
-            sys.exit(1)
+        if disconnected:
+            try:
+                print('reconnecting to target device...')
+                target = Pyboard(port, _BAUD_RATE)
+            except PyboardError:
+                print(f'cannot connect to device {port}')
+                sys.exit(1)
 
         target.enter_raw_repl()
 
