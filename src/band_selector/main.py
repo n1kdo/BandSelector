@@ -1,10 +1,10 @@
 #
-# main.py -- this is the web server for the Raspberry Pi Pico W Band Selector controller.
+# main.py -- this is the Raspberry Pi Pico W Band Selector controller.
 #
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.22'  # 2026-07-15
+__version__ = '0.1.25'  # 2026-09-15
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -31,6 +31,7 @@ __version__ = '0.1.22'  # 2026-07-15
 
 import asyncio
 import gc
+import os
 import sys
 import time
 
@@ -54,14 +55,19 @@ from udp_messages import (calculate_broadcast_address, ReceiveBroadcasts, RADIO_
                           RADIO_2_ANTENNA_OFFSET, RADIO_NAMES_OFFSET, RADIO_NAMES_SIZE, ANTENNA_NAMES_OFFSET,
                           ANTENNA_NAMES_SIZE, ANTENNA_BANDS_OFFSET, ANTENNA_BANDS_SIZE, SWITCH_NAME_OFFSET)
 
-from utils import milliseconds, upython, safe_int, num_bits_set
+from utils import milliseconds, upython, safe_int, num_bits_set, is_ipv4, is_hostname
 
 if upython:
     import machine
     from picow_network import PicowNetwork
-    from watchdog import Watchdog
+    try:
+        from watchdog import Watchdog
+    except ImportError:
+        pass
+    picow_network: PicowNetwork | None = None
 else:
     from not_machine import machine
+    picow_network: None = None
 
 
     def const(i):  # support micropython const() in cpython
@@ -200,6 +206,11 @@ config = ConfigData()
 http_server = HttpServer(content_dir=CONTENT_DIR)
 
 
+async def set_rtc_time():
+    if picow_network is not None and time.time() < 1700000000:
+        await get_ntp_time(dns_servers=picow_network.get_dns_servers())
+
+
 async def api_response(resp, msg, q):
     """
     function waits for API response, enqueues message containing response
@@ -275,7 +286,7 @@ async def slash_callback(http, verb, args, reader, writer, request_headers=None)
 async def api_config_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/api/config'
     global config, switch_host, switch_name, radio_number
     if verb == HTTP_VERB_GET:
-        response = dict(config.get_data())
+        response = config.get_data().copy()
         # response.pop('secret')  # do not return the secret
         response['secret'] = ''  # do not return the actual secret
         http_status = HTTP_STATUS_OK
@@ -328,25 +339,59 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
             config['dhcp'] = dhcp
         ip_address = args.get('ip_address')
         if ip_address is not None:
-            config['ip_address'] = ip_address
+            ip_address = ip_address.strip()
+            if is_ipv4(ip_address):
+                config['ip_address'] = ip_address
+            else:
+                errors = True
+                problems.append('ip_address')
         netmask = args.get('netmask')
         if netmask is not None:
-            config['netmask'] = netmask
+            netmask = netmask.strip()
+            if is_ipv4(netmask):
+                config['netmask'] = netmask
+            else:
+                errors = True
+                problems.append('netmask')
         gateway = args.get('gateway')
         if gateway is not None:
-            config['gateway'] = gateway
+            gateway = gateway.strip()
+            if is_ipv4(gateway):
+                config['gateway'] = gateway
+            else:
+                errors = True
+                problems.append('gateway')
         dns_server = args.get('dns_server')
         if dns_server is not None:
-            config['dns_server'] = dns_server
+            dns_server = dns_server.strip()
+            if is_ipv4(dns_server):
+                config['dns_server'] = dns_server
+            else:
+                errors = True
+                problems.append('dns_server')
         switch_ip = args.get('switch_ip')
         if switch_ip is not None:
-            switch_host = switch_ip.encode()
-            config['switch_ip'] = switch_ip
+            switch_ip = switch_ip.strip()
+            # the switch may be addressed by hostname (default 'localhost') or IP.
+            if is_hostname(switch_ip):
+                switch_host = switch_ip.encode()
+                config['switch_ip'] = switch_ip
+            else:
+                errors = True
+                problems.append('switch_ip')
         switch_name_arg = args.get('switch_name')
         if switch_name_arg is not None:
-            # switch_name = switch_name_arg
-            config['switch_name'] = switch_name_arg
-            switch_name = config.get_bytes('switch_name')
+            # The name is matched against the controller's 64-byte hostname field in
+            # the status broadcast, so anything longer can never match (and would put
+            # every datagram in the 'foreign' bucket -> silent 'no switch' state).
+            if 0 < len(switch_name_arg) <= 64:
+                config['switch_name'] = switch_name_arg
+                switch_name = config.get_bytes('switch_name')
+                if receive_broadcasts is not None:
+                    receive_broadcasts.set_switch_name(switch_name)
+            else:
+                errors = True
+                problems.append('switch_name')
         cfg_auto_on = args.get('auto_on')
         if cfg_auto_on is not None:
             auto_on = bool(safe_int(cfg_auto_on, 0))
@@ -403,18 +448,14 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
      }
     """
     http_status = HTTP_STATUS_OK
-    # very gnarly json creation
-    r = b''.join([
-        b'{\n  "lcd_lines": ["',
-        lcd[0],
-        b'","',
-        lcd[1],
-        b'"],\n  "radio_power": ',
-        b'true' if radio_power else b'false',
-        b',\n  "switch_connected": ',
-        b'true' if switch_connected else b'false',
-        b'\n}'
-    ])
+    # let send_simple_response's dict path json.dumps() the payload: the LCD
+    # lines carry antenna names from the switch controller that may contain
+    # quotes or backslashes and must be escaped.
+    r = {
+        'lcd_lines': [lcd[0].decode(), lcd[1].decode()],
+        'radio_power': radio_power,
+        'switch_connected': switch_connected,
+    }
     bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, r)
 
     return bytes_sent, http_status
@@ -423,18 +464,12 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
 @http_server.route(b'/api/power_on_radio')
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
-    # very gnarly json creation
-    r = b''.join([
-        b'{\n  "lcd_lines": ["',
-        lcd[0],
-        b'","',
-        lcd[1],
-        b'"],\n  "radio_power": ',
-        b'true' if radio_power else b'false',
-        b',\n  "switch_connected": ',
-        b'true' if switch_connected else b'false',
-        b'\n}'
-    ])
+    # ditto: dict path so antenna names in the LCD lines get json-escaped.
+    r = {
+        'lcd_lines': [lcd[0], lcd[1]],
+        'radio_power': radio_power,
+        'switch_connected': switch_connected,
+    }
     http_status = HTTP_STATUS_OK
     bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, r)
     return bytes_sent, http_status
@@ -494,7 +529,7 @@ async def new_band(new_band_number):
         logging.warning('new band with invalid band number')
         return
     logging.info(b'new band: ' + BANDS[new_band_number], 'main:new_band')
-    await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} {BANDS[new_band_number]}', None)
+    await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[new_band_number]), None)
     set_inhibit(1)
     band_antennae = find_band_antennae(new_band_number)
     if len(band_antennae) == 0:
@@ -505,7 +540,7 @@ async def new_band(new_band_number):
     else:
         if switch_connected:
             logging.info(f'new band: {BANDS[new_band_number]} got band_antennae {band_antennae}', 'main:new_band')
-            await update_ui_page(_RADIO_DATA_PAGE, None, 'Requesting Antenna')
+            await update_ui_page(_RADIO_DATA_PAGE, None, b'Requesting Antenna')
             current_antenna_list_index = 0
             await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
                                           (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
@@ -572,240 +607,259 @@ async def msg_loop(q):
         m1 = msg[1]
         # if logging.should_log(logging.DEBUG):
         #    logging.debug(f'msg received: {m0} : {m1}', 'main:msg_loop')
-        if m0 == 0:
-            logging.error(f'impossible message 0')
-        elif m0 == _MSG_BTN_1:  # show radio status
-            if m1 == 0:  # short press
-                await show_ui_page(_RADIO_DATA_PAGE)
-        elif m0 == _MSG_BTN_2:  # show network status
-            if m1 == 0:  # short press
-                await show_ui_page(_NETWORK_DATA_PAGE)
-        elif m0 == _MSG_BTN_3:  # UP button
-            if m1 == 0:  # short press
-                if ui_page == _RADIO_DATA_PAGE:
-                    # next antenna for this band.
-                    await change_band_antenna(up=True)
-        elif m0 == _MSG_BTN_4:  # DOWN button
-            if m1 == 0:  # short press
-                if ui_page == _RADIO_DATA_PAGE:
-                    # previous antenna for this band.
-                    await change_band_antenna(up=False)
-        elif m0 == _MSG_POWER_SENSE:  # power sense changed
-            if m1 == 0:
-                # detect missing radio.  do something about it.
-                radio_power = True
-                logging.info('radio power is on', 'main:msg_loop')
-            else:
-                radio_power = False
-                logging.info('radio power is off', 'main:msg_loop')
-                await update_ui_page(_RADIO_DATA_PAGE, b'%s No Power' % radio_name, None)
-        elif m0 == _MSG_NETWORK_UPDOWN:
-            # network up/down
-            if logging.should_log(logging.DEBUG):
-                logging.debug(f'msg received: {msg}', 'main:msg_loop:MSG_NETWORK_UPDOWN')
-            if m1 == 1:  # network is up!
-                logging.info('Network is up!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
-                network_connected = True
-                if udp_timeout_timer < 0:
-                    udp_timeout_timer = timer_mgr.add_timer(delay=5.0,
-                                                            callback=put_timer_message,
-                                                            arg=(_MSG_UDP_TIMEOUT, (0, b'switch message timeout')),
-                                                            auto_reset=True)
-            else:
-                logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
-                network_connected = False
-                if receive_broadcasts is not None:
-                    receive_broadcasts.stop()
-                receive_broadcasts = None
-                if broadcast_receiver_task is not None:
-                    broadcast_receiver_task.cancel()
-                    broadcast_receiver_task = None
-                if udp_timeout_timer >= 0:
-                    timer_mgr.cancel_timer(udp_timeout_timer)
-                    udp_timeout_timer = -1
-        elif m0 == _MSG_LCD_LINE0:  # LCD line 1
-            lcd[0] = m1
-            if logging.should_log(logging.INFO):
-                # logging as bytes
-                logging.info(b'LCD0: "' + lcd[0] + b'"', 'main:msg_loop')
-        elif m0 == _MSG_LCD_LINE1:  # LCD line 2
-            lcd[1] = m1
-            if logging.should_log(logging.INFO):
-                # logging as bytes
-                logging.info(b'LCD1: "' + lcd[1] + b'"', 'main:msg_loop')
-        elif m0 == _MSG_BAND_CHANGE:  # band change detected
-            if logging.should_log(logging.INFO):
-                logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
-            if not radio_power:
-                await update_ui_page(_RADIO_DATA_PAGE, b'%s No Power' % radio_name, None)
-                set_inhibit(1)
-            else:
-                if 0 <= m1 < len(ELECRAFT_BAND_MAP):
-                    current_band_number = ELECRAFT_BAND_MAP[m1]
-                    if len(antenna_names) > 0:  # only change bands if there are antennas.
-                        await new_band(current_band_number)
-                    else:  # update the display with the band name
-                        await update_ui_page(_RADIO_DATA_PAGE, f'{radio_name} {BANDS[current_band_number]}', None)
+        try:
+            if m0 == 0:
+                logging.error(f'impossible message 0')
+            elif m0 == _MSG_BTN_1:  # show radio status
+                if m1 == 0:  # short press
+                    await show_ui_page(_RADIO_DATA_PAGE)
+            elif m0 == _MSG_BTN_2:  # show network status
+                if m1 == 0:  # short press
+                    await show_ui_page(_NETWORK_DATA_PAGE)
+            elif m0 == _MSG_BTN_3:  # UP button
+                if m1 == 0:  # short press
+                    if ui_page == _RADIO_DATA_PAGE:
+                        # next antenna for this band.
+                        await change_band_antenna(up=True)
+            elif m0 == _MSG_BTN_4:  # DOWN button
+                if m1 == 0:  # short press
+                    if ui_page == _RADIO_DATA_PAGE:
+                        # previous antenna for this band.
+                        await change_band_antenna(up=False)
+            elif m0 == _MSG_POWER_SENSE:  # power sense changed
+                if m1 == 0:
+                    # detect missing radio.  do something about it.
+                    radio_power = True
+                    logging.info('radio power is on', 'main:msg_loop')
+                    band_detector.invalidate()
                 else:
-                    errmsg = f'unknown band # {m1}'
-                    logging.error(errmsg)
-                    await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
-                    set_inhibit(1)
-        elif m0 == _MSG_ANTENNA_RESPONSE:  # http select antenna response
-            http_status = m1[0]
-            payload = m1[1].decode().strip()
-            if http_status == _API_STATUS_TIMEOUT:
-                switch_connected = False
-                current_antenna = -1
-                current_antenna_name = b'_Switch API Timeout_'
-                #                       '12345678901234567890'
-                await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
-                set_inhibit(1)
-            elif http_status == _API_STATUS_ERROR or http_status == _API_STATUS_READ_ERROR:
-                switch_connected = False
-                current_antenna = -1
-                current_antenna_name = b'__Switch API Error__'
-                #                       '12345678901234567890'
-                await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
-                set_inhibit(1)
-            elif http_status == 0:  # api call failed
-                switch_connected = False
-                current_antenna = -1
-                current_antenna_name = b'_No Antenna Switch!_'
-                #                       '12345678901234567890'
-                await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
-            elif http_status == HTTP_STATUS_OK:
-                logging.debug('antenna request was successful', 'main:msg_loop')
-                if receive_broadcasts is not None:
-                    receive_broadcasts.invalidate()
-
-            elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
-                if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
-                    logging.warning(f'no antenna available for band ')
-                    await update_ui_page(_RADIO_DATA_PAGE, None, f'*{payload}*')  # TODO what is payload?
+                    radio_power = False
+                    logging.info('radio power is off', 'main:msg_loop')
+                    await update_ui_page(_RADIO_DATA_PAGE, b'%s No Power' % radio_name, None)
+            elif m0 == _MSG_NETWORK_UPDOWN:
+                # network up/down
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'msg received: {msg}', 'main:msg_loop:MSG_NETWORK_UPDOWN')
+                if m1 == 1:  # network is up!
+                    logging.info('Network is up!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
+                    network_connected = True
+                    if udp_timeout_timer < 0:
+                        udp_timeout_timer = timer_mgr.add_timer(delay=5.0,
+                                                                callback=put_timer_message,
+                                                                arg=(_MSG_UDP_TIMEOUT, (0, b'switch message timeout')),
+                                                                auto_reset=True)
+                    await set_rtc_time()  # set the clock
+                else:
+                    logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
+                    network_connected = False
+                    if receive_broadcasts is not None:
+                        receive_broadcasts.stop()
+                    receive_broadcasts = None
+                    if broadcast_receiver_task is not None:
+                        broadcast_receiver_task.cancel()
+                        broadcast_receiver_task = None
+                    if udp_timeout_timer >= 0:
+                        timer_mgr.cancel_timer(udp_timeout_timer)
+                        udp_timeout_timer = -1
+            elif m0 == _MSG_LCD_LINE0:  # LCD line 1
+                lcd[0] = m1
+                if logging.should_log(logging.INFO):
+                    # logging as bytes
+                    logging.info(b'LCD0: "' + lcd[0] + b'"', 'main:msg_loop')
+            elif m0 == _MSG_LCD_LINE1:  # LCD line 2
+                lcd[1] = m1
+                if logging.should_log(logging.INFO):
+                    # logging as bytes
+                    logging.info(b'LCD1: "' + lcd[1] + b'"', 'main:msg_loop')
+            elif m0 == _MSG_BAND_CHANGE:  # band change detected
+                if logging.should_log(logging.INFO):
+                    logging.info(f'band change, power = {radio_power}, m1={m1}', 'main:msg_loop')
+                if not radio_power:
+                    await update_ui_page(_RADIO_DATA_PAGE, b'%s No Power' % radio_name, None)
                     set_inhibit(1)
                 else:
-                    # if there is another antenna candidate, try to get it
-                    logging.info(f'API call returned HTTP status {http_status} {m1}',
-                                 'main:msg_loop:MSG_ANTENNA_RESPONSE')
-                    await update_ui_page(_RADIO_DATA_PAGE, None, '')
-                    if current_antenna_list_index < len(band_antennae) - 1:
-                        current_antenna_list_index = current_antenna_list_index + 1
-                    await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
-                                                  (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
-            else:  # some other HTTP/status code...
-                logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
-        elif m0 == _MSG_UDP_RESPONSE:
-            # logging.debug(f'udp message {m1}', 'main:msg_loop:_MSG_UDP_RESPONSE')
-            if len(m1) == 21:
-                msg_switch_name = m1[SWITCH_NAME_OFFSET]
-                if msg_switch_name == switch_name:  # this is a message for us.
-                    switch_timeouts = 0
-                    if not switch_connected:
-                        logging.info('switch_connected False to True transition',
-                                     'main:msg_loop:_MSG_UDP_RESPONSE')
-                    switch_connected = True
+                    if 0 <= m1 < len(ELECRAFT_BAND_MAP):
+                        current_band_number = ELECRAFT_BAND_MAP[m1]
+                        if len(antenna_names) > 0:  # only change bands if there are antennas.
+                            await new_band(current_band_number)
+                        else:  # update the display with the band name
+                            await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[current_band_number]), None)
+                    else:
+                        errmsg = b'unknown band # %d' % m1
+                        logging.error(errmsg)
+                        await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
+                        set_inhibit(1)
+            elif m0 == _MSG_ANTENNA_RESPONSE:  # http select antenna response
+                http_status = m1[0]
+                # 'replace' so a non-UTF-8 byte from the switch cannot raise and
+                # kill msg_loop (the only consumer task).
+                payload = m1[1].decode('utf-8', 'replace').strip()
+                if http_status == _API_STATUS_TIMEOUT:
+                    switch_connected = False
+                    current_antenna = -1
+                    current_antenna_name = b'_Switch API Timeout_'
+                    #                       '12345678901234567890'
+                    await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                    set_inhibit(1)
+                elif http_status == _API_STATUS_ERROR or http_status == _API_STATUS_READ_ERROR:
+                    switch_connected = False
+                    current_antenna = -1
+                    current_antenna_name = b'__Switch API Error__'
+                    #                       '12345678901234567890'
+                    await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                    set_inhibit(1)
+                elif http_status == 0:  # api call failed  # TODO OBSOLETE DEAD CODE
+                    switch_connected = False
+                    current_antenna = -1
+                    current_antenna_name = b'_No Antenna Switch!_'
+                    #                       '12345678901234567890'
+                    await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                elif http_status == HTTP_STATUS_OK:
+                    logging.debug('antenna request was successful', 'main:msg_loop')
+                    if receive_broadcasts is not None:
+                        receive_broadcasts.invalidate()
 
+                elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
+                    if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
+                        logging.warning(f'no antenna available for band ')
+                        await update_ui_page(_RADIO_DATA_PAGE, None, b'*%s*' % payload)
+                        set_inhibit(1)
+                    else:
+                        # if there is another antenna candidate, try to get it
+                        logging.info(f'API call returned HTTP status {http_status} {m1}',
+                                     'main:msg_loop:MSG_ANTENNA_RESPONSE')
+                        await update_ui_page(_RADIO_DATA_PAGE, None, b'')
+                        if current_antenna_list_index < len(band_antennae) - 1:
+                            current_antenna_list_index = current_antenna_list_index + 1
+                        await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
+                                                      (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+                else:  # some other HTTP/status code...
+                    logging.warning(f'select antenna API call returned status {http_status} {m1}', 'main:msg_loop')
+            elif m0 == _MSG_UDP_RESPONSE:
+                # logging.debug(f'udp message {m1}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                if len(m1) == 21:
+                    msg_switch_name = m1[SWITCH_NAME_OFFSET]
+                    if msg_switch_name == switch_name:  # this is a message for us.
+                        switch_timeouts = 0
+                        if not switch_connected:
+                            logging.info('switch_connected False to True transition',
+                                         'main:msg_loop:_MSG_UDP_RESPONSE')
+                        switch_connected = True
+
+                        # reset switch message timer.
+                        if udp_timeout_timer >= 0:
+                            timer_mgr.reset_timer(udp_timeout_timer)
+                        radio_1_antenna = safe_int(m1[RADIO_1_ANTENNA_OFFSET])
+                        radio_2_antenna = safe_int(m1[RADIO_2_ANTENNA_OFFSET])
+                        radio_names = [m1[x + RADIO_NAMES_OFFSET] for x in range(RADIO_NAMES_SIZE)]
+                        antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
+                        antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
+                        # if logging.should_log(logging.DEBUG):
+                        #    logging.debug(f'radio_1_antenna: {radio_1_antenna} radio_2_antenna:{radio_2_antenna}' 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        #    logging.debug(f'radio_names: {radio_names}' 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        #    logging.debug(f'antenna_names: {antenna_names}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+                        #    logging.debug(f'antenna_bands: {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
+
+                        if radio_number == 1 or radio_number == 2:
+                            radio_name = radio_names[radio_number - 1]
+                        else:
+                            radio_name = b'unknown radio %i' % radio_number
+                        current_antenna = -1
+                        if radio_number == 1:
+                            current_antenna = radio_1_antenna
+                        elif radio_number == 2:
+                            current_antenna = radio_2_antenna
+                        if current_antenna == 0:
+                            current_antenna_name = b'Antenna DISCONNECTED'
+                        elif 1 <= current_antenna <= 8:
+                            current_antenna_name = antenna_names[current_antenna - 1]
+                        else:
+                            current_antenna_name = b'unknown antenna %i' % current_antenna
+                        if len(band_antennae) > 1:
+                            display_antenna_name = b'%s + %i' % (current_antenna_name, len(band_antennae) - 1)
+                        else:
+                            display_antenna_name = current_antenna_name
+
+                        await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
+
+                        if not radio_power:
+                            errmsg = b'%s No Power' % radio_name
+                            if logging.should_log(logging.DEBUG):  # doesn't matter
+                                logging.debug(errmsg, 'main:msg_loop:NoPower')
+                            await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
+                            set_inhibit(1)
+                        else:
+                            if current_band_number < 1 or current_band_number > 13:
+                                # this does not look like a valid band choice, read the band data again.
+                                band_detector.invalidate()
+                            else:
+                                await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[current_band_number]),
+                                                     None)
+                                if current_antenna < 1 or current_antenna > len(antenna_bands):
+                                    # antenna index out of range -- corrupt datagram? keep TX inhibited.
+                                    logging.warning(f'invalid antenna index {current_antenna} in udp response',
+                                                    'main:msg_loop:_MSG_UDP_RESPONSE')
+                                    set_inhibit(1)
+                                else:
+                                    antenna_mask = antenna_bands[current_antenna - 1]
+                                    if antenna_mask < 0 or antenna_mask > 0x1FFF:
+                                        # band mask out of range -- corrupt datagram? keep TX inhibited.
+                                        logging.warning(f'invalid antenna band mask {antenna_mask} in udp response',
+                                                        'main:msg_loop:_MSG_UDP_RESPONSE')
+                                        set_inhibit(1)
+                                    elif MASKS[current_band_number] & antenna_mask:
+                                        set_inhibit(0)
+                                        if len(band_antennae) > 1:
+                                            # display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
+                                            display_antenna_name = b'%s + %i' % (current_antenna_name,
+                                                                                 len(band_antennae) - 1)
+                                        else:
+                                            display_antenna_name = current_antenna_name
+                                        await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
+                                    else:
+                                        set_inhibit(1)
+                                        # try to get the right band...
+                                        await new_band(current_band_number)
+
+                    else:
+                        logging.warning(f'unexpected msg_switch_name {msg_switch_name}, want switch_name {switch_name}',
+                                        'main:msg_loop:_MSG_UDP_RESPONSE')
+                elif len(m1) == 0:  # unchanged UDP message, just reset the timer.
                     # reset switch message timer.
                     if udp_timeout_timer >= 0:
                         timer_mgr.reset_timer(udp_timeout_timer)
-                    radio_1_antenna = safe_int(m1[RADIO_1_ANTENNA_OFFSET])
-                    radio_2_antenna = safe_int(m1[RADIO_2_ANTENNA_OFFSET])
-                    radio_names = [m1[x + RADIO_NAMES_OFFSET] for x in range(RADIO_NAMES_SIZE)]
-                    antenna_names = [m1[x + ANTENNA_NAMES_OFFSET] for x in range(ANTENNA_NAMES_SIZE)]
-                    antenna_bands = [m1[x + ANTENNA_BANDS_OFFSET] for x in range(ANTENNA_BANDS_SIZE)]
-                    # if logging.should_log(logging.DEBUG):
-                    #    logging.debug(f'radio_1_antenna: {radio_1_antenna} radio_2_antenna:{radio_2_antenna}' 'main:msg_loop:_MSG_UDP_RESPONSE')
-                    #    logging.debug(f'radio_names: {radio_names}' 'main:msg_loop:_MSG_UDP_RESPONSE')
-                    #    logging.debug(f'antenna_names: {antenna_names}', 'main:msg_loop:_MSG_UDP_RESPONSE')
-                    #    logging.debug(f'antenna_bands: {antenna_bands}', 'main:msg_loop:_MSG_UDP_RESPONSE')
-
-                    if radio_number == 1 or radio_number == 2:
-                        radio_name = radio_names[radio_number - 1]
-                    else:
-                        radio_name = b'unknown radio %i' % radio_number
-                    current_antenna = -1
-                    if radio_number == 1:
-                        current_antenna = radio_1_antenna
-                    elif radio_number == 2:
-                        current_antenna = radio_2_antenna
-                    if current_antenna == 0:
-                        current_antenna_name = b'Antenna DISCONNECTED'
-                    elif 1 <= current_antenna <= 8:
-                        current_antenna_name = antenna_names[current_antenna - 1]
-                    else:
-                        current_antenna_name = b'unknown antenna %i' % current_antenna
-                    if len(band_antennae) > 1:
-                        display_antenna_name = b'%s + %i' % (current_antenna_name, len(band_antennae) - 1)
-                    else:
-                        display_antenna_name = current_antenna_name
-
-                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
-
-                    if not radio_power:
-                        errmsg = b'%s No Power' % radio_name
-                        if logging.should_log(logging.DEBUG):  # doesn't matter
-                            logging.debug(errmsg, 'main:msg_loop:NoPower')
-                        await update_ui_page(_RADIO_DATA_PAGE, errmsg, None)
-                        set_inhibit(1)
-                    else:
-                        if current_band_number < 1 or current_band_number > 13:
-                            # this does not look like a valid band choice, read the band data again.
-                            band_detector.invalidate()
-                        else:
-                            await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[current_band_number]),
-                                                 None)
-                            if current_antenna < 1:
-                                set_inhibit(1)
-                            else:
-                                if MASKS[current_band_number] & antenna_bands[current_antenna - 1]:
-                                    set_inhibit(0)
-                                    if len(band_antennae) > 1:
-                                        # display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
-                                        display_antenna_name = b'%s + %i' % (current_antenna_name,
-                                                                             len(band_antennae) - 1)
-                                    else:
-                                        display_antenna_name = current_antenna_name
-                                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
-                                else:
-                                    set_inhibit(1)
-                                    # try to get the right band...
-                                    await new_band(current_band_number)
-
+                    if not switch_connected:
+                        switch_timeouts = 0
+                        switch_connected = True
+                        if logging.should_log(logging.DEBUG):
+                            logging.debug('switch_connected False to True',
+                                          'main:msg_loop:_MSG_UDP_RESPONSE:')
                 else:
-                    logging.warning(f'unexpected msg_switch_name {msg_switch_name}, want switch_name {switch_name}',
-                                    'main:msg_loop:_MSG_UDP_RESPONSE')
-            elif len(m1) == 0:  # unchanged UDP message, just reset the timer.
-                # reset switch message timer.
-                if udp_timeout_timer >= 0:
-                    timer_mgr.reset_timer(udp_timeout_timer)
-                if not switch_connected:
-                    switch_timeouts = 0
-                    switch_connected = True
-                    if logging.should_log(logging.DEBUG):
-                        logging.debug('switch_connected False to True',
-                                      'main:msg_loop:_MSG_UDP_RESPONSE:')
+                    logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
+                                  'main:msg_loop:_MSG_UDP_RESPONSE')
+            elif m0 == _MSG_UDP_TIMEOUT:
+                switch_timeouts += 1
+                if logging.should_log(logging.DEBUG):
+                    logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:_MSG_UDP_TIMEOUT')
+                if switch_timeouts == 1:
+                    if switch_connected:
+                        logging.warning('switch_connected True to False transition',
+                                        'main:msg_loop:_MSG_UDP_TIMEOUT:')
+                    set_inhibit(1)
+                    switch_connected = False
+                    if receive_broadcasts is not None:
+                        receive_broadcasts.invalidate()
+                    current_antenna = -1
+                    current_antenna_name = b'No Antenna Switch!'
+                    display_antenna_name = current_antenna_name
+                    await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
             else:
-                logging.error(f'udp message is wrong length: {len(m1)}, expected 21.',
-                              'main:msg_loop:_MSG_UDP_RESPONSE')
-        elif m0 == _MSG_UDP_TIMEOUT:
-            switch_timeouts += 1
-            if logging.should_log(logging.DEBUG):
-                logging.debug(f'switch timeouts={switch_timeouts}', 'main:msg_loop:_MSG_UDP_TIMEOUT')
-            if switch_timeouts == 1:
-                if switch_connected:
-                    logging.warning('switch_connected True to False transition',
-                                    'main:msg_loop:_MSG_UDP_TIMEOUT:')
-                set_inhibit(1)
-                switch_connected = False
-                if receive_broadcasts is not None:
-                    receive_broadcasts.invalidate()
-                current_antenna = -1
-                current_antenna_name = b'No Antenna Switch!'
-                display_antenna_name = current_antenna_name
-                await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
-        else:
-            logging.error(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
+                logging.error(f'unhandled message ({m0}, {m1})', 'main:msg_loop')
+        except Exception as e:
+            # A handler bug must not kill msg_loop (the only consumer task);
+            # log it and keep processing.  CancelledError is a BaseException
+            # on MicroPython, so cancellation still propagates correctly.
+            logging.exception(f'exception handling message {m0}: {e}', 'main:msg_loop', e)
         dt = milliseconds() - t0
         if dt > 100:
             logging.warning(f'Message {m0} handling took {dt} ms.', 'main:msg_loop')
@@ -826,6 +880,8 @@ async def net_msg_func(message: bytes | str, msg_status=0) -> None:
         await update_ui_page(_NETWORK_DATA_PAGE, lines[0], lines[1])
     if msg_status == 1:
         await msgq.put((_MSG_NETWORK_UPDOWN, 1))
+    elif msg_status == -1:
+        await msgq.put((_MSG_NETWORK_UPDOWN, 0))
 
 
 async def put_timer_message(msg):
@@ -835,7 +891,7 @@ async def put_timer_message(msg):
 
 
 async def main():
-    global ap_mode, keep_running, config, radio_number, receive_broadcasts, switch_host, switch_name, broadcast_receiver_task
+    global ap_mode, broadcast_receiver_task, config, keep_running, picow_network, radio_number, receive_broadcasts, switch_host, switch_name
     config['ap_mode'] = sw1.value() == 0
     config_level = config.get('log_level')
     if config_level:
@@ -851,13 +907,14 @@ async def main():
     if web_port < 1 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
 
-    time_set = False
-
     if upython:
-        if logging.loglevel != logging.DEBUG:
-            _ = Watchdog()
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, long_messages=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
+        if logging.loglevel != logging.DEBUG:
+            try:
+                _ = Watchdog()
+            except NameError:
+                pass
     else:
         picow_network = None
         _msg_loop_task = None
@@ -867,6 +924,7 @@ async def main():
 
     auto_power_timer = 5 if auto_on else 0
     ten_count = 0
+    ip_address = None
     sleep_ms = asyncio.sleep_ms
     while keep_running:
         await sleep_ms(100)  # asyncio.sleep(1.0)
@@ -881,22 +939,16 @@ async def main():
             ten_count = 0
             if picow_network is not None:
                 ip_address = picow_network.get_ip_address()
-            else:
-                ip_address = None
 
             if ip_address is not None:
-                if not time_set:
-                    get_ntp_time()
-                    if time.time() > 1700000000:
-                        time_set = True
-
                 if receive_broadcasts is None:
                     netmask = picow_network.get_netmask()
                     broadcast_address = calculate_broadcast_address(ip_address, netmask)
                     receive_broadcasts = ReceiveBroadcasts(receive_ip=broadcast_address,
                                                            receive_port=65073,
                                                            message_queue=msgq,
-                                                           message_id=_MSG_UDP_RESPONSE)
+                                                           message_id=_MSG_UDP_RESPONSE,
+                                                           switch_name=switch_name)
                     broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
 
             if auto_power_timer > 0:
@@ -919,13 +971,19 @@ if __name__ == '__main__':
     logging.loglevel = logging.INFO
     logging.info(f'starting, reset_cause={reset_cause}', 'main:__main__')
     logging.info(f'BandSelector version {__version__} running on {sys.implementation[2]}', 'main:__main__')
-    machine.freq(200000000)  # overclock to 200 Mhz, is now supported, stock pico 2 is 150 MHz, pico is 133 MHz.
-    logging.info(f'clock set to {machine.freq()} hz')
+    machine_info = os.uname().machine
+
+    if "RP2350" in machine_info:
+        machine.freq(200000000)  # overclock to 200 Mhz, is now supported, stock pico 2 is 150 MHz, pico is 133 MHz.
+        logging.info(f'clock set to {machine.freq()} hz')
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info('KeyboardInterrupt -- bye bye', 'main:__main__')
     finally:
-        asyncio.new_event_loop()
+        logging.info('finally', 'main:__main__')
+        # de-init the network
+        if picow_network is not None:
+            picow_network.deinit()
     config.flush()
     logging.info('done', 'main:__main__')

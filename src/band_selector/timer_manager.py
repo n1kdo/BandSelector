@@ -105,7 +105,13 @@ class TimerManager:
     async def _check_timers(self):
         while self._run:
             delete_list = []
-            for timer in self._timers.values():
+            # Iterate a snapshot: a callback may yield (e.g. awaiting a full
+            # message queue), during which msg_loop can add or cancel timers.
+            # Mutating the dict mid-iteration would raise and kill this task.
+            for timer in list(self._timers.values()):
+                if timer.index not in self._timers:
+                    # Cancelled after the snapshot was taken; skip it.
+                    continue
                 timer.remaining -= 1
                 if timer.remaining == 0:
                     #logging.info(f'timer {timer.index} timed out...', 'timer_manager:_check_timers')
@@ -121,5 +127,7 @@ class TimerManager:
                     else:
                         delete_list.append(timer.index)
             for index in delete_list:
-                del self._timers[index]
+                # pop(): the timer may already have been cancelled (and removed)
+                # while its callback was awaiting.
+                self._timers.pop(index, None)
             await sleep_ms(100)

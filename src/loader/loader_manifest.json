@@ -6,6 +6,7 @@
     "alcd.py",
     "button.py",
     "cached_config_data.py",
+    "compatible_json.py",
     "config_data.py",
     "fourbits.py",
     "gpio_pin.py",

@@ -169,11 +169,13 @@ class ReceiveBroadcasts:
     class that receives antenna control UDP messages from BandSelectors.
     """
 
-    def __init__(self, receive_ip, receive_port, message_queue: RingbufQueue, message_id: int):
+    def __init__(self, receive_ip, receive_port, message_queue: RingbufQueue, message_id: int, switch_name: bytes):
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.msgq = message_queue
         self.msgid = message_id
+        self.switch_name = switch_name
+        self.last_is_foreign = False
         self.buf = bytearray(STATUS_BROADCAST_SIZE)
         self.last_buf = bytearray(STATUS_BROADCAST_SIZE)
         self.run = True
@@ -197,6 +199,14 @@ class ReceiveBroadcasts:
         """
         self.last_buf[:STATUS_BROADCAST_SIZE] = b'\0' * STATUS_BROADCAST_SIZE
 
+    def set_switch_name(self, name: bytes):
+        """
+        Update the expected switch name (e.g. changed via the API) and force
+        re-validation of the next datagram.
+        """
+        self.switch_name = name
+        self.invalidate()
+
     async def wait_for_datagram(self):
         while self.run:
             try:
@@ -218,12 +228,25 @@ class ReceiveBroadcasts:
                             data.append(item)
                         #if logging.should_log(logging.DEBUG):
                         #    logging.debug(f'message data "{data}"', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
-                        msg = (self.msgid, data)
-                        await self.msgq.put(msg)
+                        if data[SWITCH_NAME_OFFSET] == self.switch_name:
+                            self.last_is_foreign = False
+                            msg = (self.msgid, data)
+                            await self.msgq.put(msg)
+                        elif not self.last_is_foreign:
+                            # A switch we do not own is broadcasting on our port.
+                            # Report it once, but queue neither the message nor
+                            # heartbeats for it: msg_loop would otherwise treat
+                            # the foreign switch as our connected switch.
+                            logging.warning(f'unexpected switch name {data[SWITCH_NAME_OFFSET]}, want {self.switch_name}',
+                                            'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                            self.last_is_foreign = True
                     else:
-                        #logging.debug('unchanged UDP message, sending heartbeat only.', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
-                        msg = (self.msgid, [])
-                        await self.msgq.put(msg)
+                        # Only heartbeat for a buffer validated as ours; the
+                        # heartbeat carries no name for msg_loop to check.
+                        if not self.last_is_foreign:
+                            #logging.debug('unchanged UDP message, sending heartbeat only.', 'udp_messages:ReceiveBroadcasts:wait_for_datagram')
+                            msg = (self.msgid, [])
+                            await self.msgq.put(msg)
 
             except OSError:
                 # this is a timeout exception, no data was received, this is not abnormal.
