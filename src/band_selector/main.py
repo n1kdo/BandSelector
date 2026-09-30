@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.25'  # 2026-09-15
+__version__ = '0.1.26'  # 2026-09-30
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -337,38 +337,39 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         if dhcp_arg is not None:
             dhcp = bool(safe_int(dhcp_arg, 0))
             config['dhcp'] = dhcp
-        ip_address = args.get('ip_address')
-        if ip_address is not None:
-            ip_address = ip_address.strip()
-            if is_ipv4(ip_address):
-                config['ip_address'] = ip_address
-            else:
-                errors = True
-                problems.append('ip_address')
-        netmask = args.get('netmask')
-        if netmask is not None:
-            netmask = netmask.strip()
-            if is_ipv4(netmask):
-                config['netmask'] = netmask
-            else:
-                errors = True
-                problems.append('netmask')
-        gateway = args.get('gateway')
-        if gateway is not None:
-            gateway = gateway.strip()
-            if is_ipv4(gateway):
-                config['gateway'] = gateway
-            else:
-                errors = True
-                problems.append('gateway')
-        dns_server = args.get('dns_server')
-        if dns_server is not None:
-            dns_server = dns_server.strip()
-            if is_ipv4(dns_server):
-                config['dns_server'] = dns_server
-            else:
-                errors = True
-                problems.append('dns_server')
+        if not config.get('dhcp', True):
+            ip_address = args.get('ip_address')
+            if ip_address is not None:
+                ip_address = ip_address.strip()
+                if is_ipv4(ip_address):
+                    config['ip_address'] = ip_address
+                else:
+                    errors = True
+                    problems.append('ip_address')
+            netmask = args.get('netmask')
+            if netmask is not None:
+                netmask = netmask.strip()
+                if is_ipv4(netmask):
+                    config['netmask'] = netmask
+                else:
+                    errors = True
+                    problems.append('netmask')
+            gateway = args.get('gateway')
+            if gateway is not None:
+                gateway = gateway.strip()
+                if is_ipv4(gateway):
+                    config['gateway'] = gateway
+                else:
+                    errors = True
+                    problems.append('gateway')
+            dns_server = args.get('dns_server')
+            if dns_server is not None:
+                dns_server = dns_server.strip()
+                if is_ipv4(dns_server):
+                    config['dns_server'] = dns_server
+                else:
+                    errors = True
+                    problems.append('dns_server')
         switch_ip = args.get('switch_ip')
         if switch_ip is not None:
             switch_ip = switch_ip.strip()
@@ -708,12 +709,6 @@ async def msg_loop(q):
                     #                       '12345678901234567890'
                     await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
                     set_inhibit(1)
-                elif http_status == 0:  # api call failed  # TODO OBSOLETE DEAD CODE
-                    switch_connected = False
-                    current_antenna = -1
-                    current_antenna_name = b'_No Antenna Switch!_'
-                    #                       '12345678901234567890'
-                    await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
                 elif http_status == HTTP_STATUS_OK:
                     logging.debug('antenna request was successful', 'main:msg_loop')
                     if receive_broadcasts is not None:
@@ -949,7 +944,13 @@ async def main():
                                                            message_queue=msgq,
                                                            message_id=_MSG_UDP_RESPONSE,
                                                            switch_name=switch_name)
-                    broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
+                    if not receive_broadcasts.run:
+                        # bind failed inside __init__; drop the object so the next
+                        # pass retries (otherwise no status broadcasts until a
+                        # network down/up cycle).
+                        receive_broadcasts = None
+                    else:
+                        broadcast_receiver_task = asyncio.create_task(receive_broadcasts.wait_for_datagram())
 
             if auto_power_timer > 0:
                 auto_power_timer -= 1
