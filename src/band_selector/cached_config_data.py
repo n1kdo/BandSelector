@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.0.7'  # 2026-09-22
+__version__ = '0.0.8'  # 2026-09-30
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -60,7 +60,10 @@ class CachedConfigData:
     def _read_config_data(self):
         try:
             with open(self._config_file_name, 'r') as config_file:
-                self._config_data = json.load(config_file)
+                data = json.load(config_file)
+                if not isinstance(data, dict):
+                    raise ValueError('config file is not a JSON object')
+                self._config_data = data
                 if logging.should_log(logging.DEBUG):
                     logging.debug(f'read configuration from {self._config_file_name}',
                                   'cached_config_data:_read_config_data()')

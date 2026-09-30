@@ -239,12 +239,13 @@
 
         function set_refresh(secs) {
             update_secs = secs
-            if (update_secs === 0) {
-                if (update_timeout !== 0) {
-                    clearTimeout(update_timeout)
-                    update_timeout = 0;
-                }
-            } else {
+            if (update_timeout !== 0) {
+                // always kill the pending timer first, so switching refresh rates
+                // never leaves a stale self-perpetuating polling chain behind.
+                clearTimeout(update_timeout)
+                update_timeout = 0;
+            }
+            if (update_secs > 0) {
                 get_status();
             }
         }

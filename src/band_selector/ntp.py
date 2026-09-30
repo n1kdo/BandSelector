@@ -25,7 +25,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.2'  # 2026-09-13
+__version__ = '0.1.3'  # 2026-09-30
 
 #
 # All network I/O in this module is async-safe: sockets are non-blocking and the
@@ -113,6 +113,7 @@ def _read_dns_name(data, off):
     """Walk a (possibly compressed) DNS name.  Returns (name_str, new_offset)."""
     labels = []
     end = None
+    pointers = 0
     while True:
         if off >= len(data):
             raise ValueError('truncated DNS name')
@@ -120,6 +121,9 @@ def _read_dns_name(data, off):
         if l & 0xC0:
             if off + 1 >= len(data):
                 raise ValueError('truncated DNS name pointer')
+            pointers += 1
+            if pointers > 20:  # real names use far fewer; more implies a cycle.
+                raise ValueError('too many DNS name pointers (cycle?)')
             if end is None:
                 # a pointer means the name "ends" after this 2-byte pointer
                 end = off + 2
