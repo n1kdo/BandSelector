@@ -189,26 +189,36 @@
                 alert("Invalid Web Port");
                 return;
             }
-            // should validate static IP parameters here
+            // validate static IP parameters: anchored match plus per-octet range check.
+            function is_valid_ipv4(value) {
+                let m = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+                if (m === null) {
+                    return false;
+                }
+                for (let i = 1; i <= 4; i++) {
+                    if (parseInt(m[i]) > 255) {
+                        return false;
+                    }
+                }
+                return true;
+            }
             if (!dhcp) {
-                let ip_addr_regex = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
-                if (!ip_address.match(ip_addr_regex)) {
+                if (!is_valid_ipv4(ip_address)) {
                     alert("Invalid IP address");
                     return;
                 }
-                if (!netmask.match(ip_addr_regex)) {
+                if (!is_valid_ipv4(netmask)) {
                     alert("Invalid Network Mask");
                     return;
                 }
-                if (!gateway.match(ip_addr_regex)) {
+                if (!is_valid_ipv4(gateway)) {
                     alert("Invalid Gateway Address");
                     return;
                 }
-                if (!dns_server.match(ip_addr_regex)) {
+                if (!is_valid_ipv4(dns_server)) {
                     alert("Invalid DNS Server Address");
                     return;
                 }
-
             }
             let config = {};
             config.SSID = ssid;
@@ -228,8 +238,12 @@
                 return;
             }
             xmlHttp.onreadystatechange = function () {
-                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
-                    process_set_config_response(xmlHttp.responseText);
+                if (xmlHttp.readyState === 4) {
+                    if (xmlHttp.status === 200) {
+                        process_set_config_response(xmlHttp.responseText);
+                    } else {
+                        alert("Config save failed (HTTP " + xmlHttp.status + "). Nothing was saved.");
+                    }
                 }
             }
             xmlHttp.open("POST", "/api/config", true);
@@ -334,7 +348,7 @@
         <span class="selected">Network</span>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260525</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260930</div>
 </div>
 </body>
 </html>

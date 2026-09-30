@@ -181,9 +181,16 @@
                 alert("get a better browser!");
                 return;
             }
+            // make the ontimeout handler real: give up well before the server would.
+            xmlHttp.timeout = 10000;
             xmlHttp.onreadystatechange = function () {
-                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
-                    process_get_status_response(xmlHttp.responseText);
+                if (xmlHttp.readyState === 4) {
+                    if (xmlHttp.status === 200) {
+                        process_get_status_response(xmlHttp.responseText);
+                    } else if (update_secs > 0 || auto_updates > 0) {
+                        // non-200: keep the loop alive instead of dying silently.
+                        update_timeout = setTimeout(get_status, update_secs * 1000);
+                    }
                 }
             }
             xmlHttp.onerror = function () {
@@ -289,7 +296,7 @@
         <a href="network.html">Network</a>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260518</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260930</div>
 </div>
 </body>
 </html>
