@@ -1,7 +1,6 @@
 {"SSID": "FBI Surveillance Van",
   "secret": "this aint no disco",
   "web_port": "80",
-  "ap_mode": false,
   "dhcp": true,
   "hostname": "ant-switch",
   "ip_address": "192.168.1.9",

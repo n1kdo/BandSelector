@@ -171,7 +171,6 @@ DEFAULT_SSID = 'selector'
 DEFAULT_WEB_PORT = 80
 
 # globals...
-ap_mode = False
 keep_running = True
 current_antenna = -1
 current_antenna_name = b'Unknown Antenna'
@@ -292,7 +291,6 @@ async def api_config_callback(http, verb, args, reader, writer, request_headers=
         http_status = HTTP_STATUS_OK
         bytes_sent = await http.send_simple_response(writer, http_status, http.CT_APP_JSON, response)
     elif verb == HTTP_VERB_POST:
-        config['ap_mode'] = False  # always disable AP mode when changing config.
         errors = False
         problems = []
         log_level = args.get('log_level')
@@ -886,8 +884,7 @@ async def put_timer_message(msg):
 
 
 async def main():
-    global ap_mode, broadcast_receiver_task, config, keep_running, picow_network, radio_number, receive_broadcasts, switch_host, switch_name
-    config['ap_mode'] = sw1.value() == 0
+    global broadcast_receiver_task, config, keep_running, picow_network, radio_number, receive_broadcasts, switch_host, switch_name
     config_level = config.get('log_level')
     if config_level:
         logging.set_level(config_level)
@@ -896,14 +893,15 @@ async def main():
     auto_on = config.get('auto_on', False)
     switch_host = config.get('switch_ip', 'localhost').encode()
     switch_name = config.get_bytes('switch_name', 'switch-name')
-    ap_mode = config.get('ap_mode', False)
+    ap_mode = sw1.value() == 0
 
     web_port = safe_int(config.get('web_port') or DEFAULT_WEB_PORT, DEFAULT_WEB_PORT)
     if web_port < 1 or web_port > 65535:
         web_port = DEFAULT_WEB_PORT
 
     if upython:
-        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func, long_messages=True)
+        picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func,
+                                     access_point_mode=ap_mode, long_messages=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
         if logging.loglevel != logging.DEBUG:
             try:

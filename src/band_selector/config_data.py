@@ -40,7 +40,6 @@ class ConfigData(CachedConfigData):
     @staticmethod
     def _default_config_data():
         return {
-            'ap_mode': False,
             'auto_on': False,
             'dhcp': True,
             'dns_server': '8.8.8.8',
