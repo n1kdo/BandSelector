@@ -38,7 +38,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-__version__ = '0.1.5'  # 2026-10-04
+__version__ = '0.1.6'  # 2026-10-04
 
 import asyncio
 import errno
@@ -202,6 +202,7 @@ async def request(method:bytes, url:bytes, timeout:float=_READ_TIMEOUT):
     headers = []
     while redir_cnt < 2:
         reader, writer = await request_raw(method, url)
+        headers = []
         try:
             # readline is a co-routine in micropython, safe to ignore warning.
             sline = await asyncio.wait_for(reader.readline(), timeout)
