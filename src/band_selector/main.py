@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.26'  # 2026-09-30
+__version__ = '0.1.27'  # 2026-10-04
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -463,9 +463,8 @@ async def api_status_callback(http, verb, args, reader, writer, request_headers=
 @http_server.route(b'/api/power_on_radio')
 async def api_power_on_radio_callback(http, verb, args, reader, writer, request_headers=None):
     await power_on()
-    # ditto: dict path so antenna names in the LCD lines get json-escaped.
     r = {
-        'lcd_lines': [lcd[0], lcd[1]],
+        'lcd_lines': [lcd[0].decode(), lcd[1].decode()],
         'radio_power': radio_power,
         'switch_connected': switch_connected,
     }
@@ -647,7 +646,7 @@ async def msg_loop(q):
                                                                 callback=put_timer_message,
                                                                 arg=(_MSG_UDP_TIMEOUT, (0, b'switch message timeout')),
                                                                 auto_reset=True)
-                    await set_rtc_time()  # set the clock
+                    asyncio.create_task(set_rtc_time())  # set the clock
                 else:
                     logging.warning('Network is DOWN!', 'main:msg_loop:_MSG_NETWORK_UPDOWN')
                     network_connected = False
@@ -714,7 +713,7 @@ async def msg_loop(q):
 
                 elif HTTP_STATUS_BAD_REQUEST <= http_status <= 499:
                     if len(band_antennae) == 0 or current_antenna_list_index == len(band_antennae) - 1:
-                        logging.warning(f'no antenna available for band ')
+                        logging.warning(b'no antenna available for band %s' % payload, 'main:msg_loop')
                         await update_ui_page(_RADIO_DATA_PAGE, None, b'*%s*' % payload)
                         set_inhibit(1)
                     else:
