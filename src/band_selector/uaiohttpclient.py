@@ -38,7 +38,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-__version__ = '0.1.4'  # 2026-09-13
+__version__ = '0.1.5'  # 2026-10-04
 
 import asyncio
 import errno
@@ -233,6 +233,8 @@ async def request(method:bytes, url:bytes, timeout:float=_READ_TIMEOUT):
             redir_cnt += 1
             writer.close()
             await writer.wait_closed()
+            if redir_cnt >= 2:
+                raise ValueError('too many redirects')
             continue
         break
 
