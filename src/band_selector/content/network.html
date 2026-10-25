@@ -180,7 +180,7 @@
                 alert("Invalid Secret");
                 return;
             }
-            if (hostname.length < 1 || hostname.length > 64) {
+            if (hostname.length < 1 || hostname.length > 32) {
                 alert("Invalid hostname!");
                 return;
             }
@@ -299,7 +299,7 @@
         </p>
         <p>
             <label for="hostname_input">Hostname:</label>
-            <input type="text" id="hostname_input" maxlength="64">
+            <input type="text" id="hostname_input" maxlength="32">
         </p>
         <p>
             <label for="web_port_input">Web Port:</label>
@@ -347,7 +347,7 @@
         <span class="selected">Network</span>
         <a href="files.html">Files</a>
     </div>
-    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20260930</div>
+    <div class="author"><a href="https://www.n1kdo.com" target="_blank">N1KDO</a> 20261025</div>
 </div>
 </body>
 </html>

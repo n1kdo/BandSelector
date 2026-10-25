@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.27'  # 2026-10-04
+__version__ = '0.1.28'  # 2026-10-25
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -276,7 +276,7 @@ async def call_select_antenna_api(new_antenna, msg, q):
 @http_server.route(b'/')
 async def slash_callback(http, verb, args, reader, writer, request_headers=None):  # callback for '/'
     http_status = HTTP_STATUS_MOVED_PERMANENTLY
-    bytes_sent = await http.send_simple_response(writer, http_status, None, None, ['Location: /status.html'])
+    bytes_sent = await http.send_simple_response(writer, http_status, None, None, [b'Location: /status.html'])
     return bytes_sent, http_status
 
 
