@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2022, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.28'  # 2026-10-25
+__version__ = '0.1.29'  # 2026-11-11
 
 #
 # Copyright 2022, 2026 J. B. Otterson N1KDO.
@@ -902,7 +902,7 @@ async def main():
         picow_network = PicowNetwork(config, DEFAULT_SSID, DEFAULT_SECRET, net_msg_func,
                                      access_point_mode=ap_mode, long_messages=True)
         _msg_loop_task = asyncio.create_task(msg_loop(msgq))
-        if logging.loglevel != logging.DEBUG:
+        if logging.get_level() != logging.DEBUG:
             try:
                 _ = Watchdog()
             except NameError:
@@ -966,7 +966,7 @@ async def main():
 
 if __name__ == '__main__':
     reset_cause = machine.reset_cause()
-    logging.loglevel = logging.INFO
+    logging.set_level(logging.INFO)
     logging.info(f'starting, reset_cause={reset_cause}', 'main:__main__')
     logging.info(f'BandSelector version {__version__} running on {sys.implementation[2]}', 'main:__main__')
     machine_info = os.uname().machine

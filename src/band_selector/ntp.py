@@ -25,7 +25,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.3'  # 2026-09-30
+__version__ = '0.1.4'  # 2026-11-11
 
 #
 # All network I/O in this module is async-safe: sockets are non-blocking and the
@@ -269,7 +269,7 @@ def main():
     tt = asyncio.run(get_ntp_time(dns_servers=servers))
     print('ntptime: ', tt)
     if tt is not None:
-        dt = f'{tt[0]:04d}-{tt[1]:02d}-{tt[2]:02d}T{tt[3]:02d}:{tt[4]:02d}:{tt[5]:02d}+00:00'
+        dt = '%04d-%02d-%02dT%02d:%02d:%02d+00:00' % (tt[0], tt[1], tt[2], tt[3], tt[4], tt[5])
         print(dt)
 
 
