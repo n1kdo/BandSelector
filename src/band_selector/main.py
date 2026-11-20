@@ -123,6 +123,20 @@ _API_STATUS_TIMEOUT = const(-1)
 _API_STATUS_ERROR = const(-2)
 _API_STATUS_READ_ERROR = const(-3)
 
+# seconds to wait for an HTTP response from the antenna switch before declaring
+# a timeout.  UDP confirmation can release TX inhibit while a request is still
+# pending, so a generous value costs little (see _MAX_ANTENNA_REQUEST_RETRIES).
+_API_RESPONSE_TIMEOUT = 1.0
+
+# api response latency (ms) worth calling out at info level; faster responses
+# are logged at debug only.
+_SLOW_API_RESPONSE_MS = const(300)
+
+# retries of the select_antenna API call after a timeout, per band/antenna
+# selection (total attempts = 1 + this).  The periodic UDP status broadcast
+# remains the authority on whether the switch is alive.
+_MAX_ANTENNA_REQUEST_RETRIES = const(2)
+
 # set up message queue
 msgq = RingbufQueue(32)
 
@@ -172,7 +186,8 @@ DEFAULT_WEB_PORT = 80
 
 # globals...
 keep_running = True
-current_antenna = -1
+current_antenna = -1  # the current antenna assigned to the radio
+requested_antenna = -1  # last antenna number asked of the switch (-1 = nothing requested)
 current_antenna_name = b'Unknown Antenna'
 current_band_number = 0
 radio_name = b'Unknown Rig'
@@ -182,6 +197,7 @@ band_antennae = []  # list of antennas that could work on the current band.
 network_connected = False
 radio_number = 0
 radio_power = False
+antenna_request_tries = 0  # timeouts seen for the current antenna selection
 switch_connected = False
 switch_host = None
 switch_name = b''
@@ -243,7 +259,7 @@ async def call_api(url, msg, q):
         logging.debug(f'{alloc} allocated, {free} free {pct_free:6.2f}% free.', 'main:call_api')
     t0 = milliseconds()
     try:
-        resp = await asyncio.wait_for(aiohttp.request(b"GET", url), 0.5)
+        resp = await asyncio.wait_for(aiohttp.request(b"GET", url), _API_RESPONSE_TIMEOUT)
     except asyncio.TimeoutError:  # as ex:
         dt = milliseconds() - t0
         errmsg = b'timed out on api call to "%s" after %d ms' % (url, dt)
@@ -258,16 +274,20 @@ async def call_api(url, msg, q):
         await q.put(msg)
     else:
         http_status = resp.status
-        if logging.should_log(logging.DEBUG):
-            dt = milliseconds() - t0
+        dt = milliseconds() - t0
+        if dt >= _SLOW_API_RESPONSE_MS:
+            logging.info(f'api call to {url} returned {http_status} after {dt} ms (slow)', 'main:call_api')
+        elif logging.should_log(logging.DEBUG):
             logging.debug(f'api call to {url} returned {http_status} after {dt} ms', 'main:call_api')
         msg = (msg[0], (http_status, b'no response'))
         asyncio.create_task(api_response(resp, msg, q))
 
 
 async def call_select_antenna_api(new_antenna, msg, q):
+    global requested_antenna
     if logging.should_log(logging.INFO):
         logging.info(f'requesting antenna {new_antenna}', 'main:call_select_antenna_api')
+    requested_antenna = new_antenna
     url = b'http://%s/api/select_antenna?radio=%d&antenna=%d' % (switch_host, radio_number, new_antenna)
     asyncio.create_task(call_api(url, msg, q))
 
@@ -522,10 +542,14 @@ async def power_on():
 
 
 async def new_band(new_band_number):
-    global band_antennae, current_antenna_list_index
+    global antenna_request_tries, band_antennae, current_antenna_list_index, requested_antenna
     if new_band_number == 0:
         logging.warning('new band with invalid band number')
         return
+    # a band change voids any earlier confirmation; only a fresh request followed
+    # by a matching UDP broadcast may release TX inhibit.
+    requested_antenna = -1
+    antenna_request_tries = 0
     logging.info(b'new band: ' + BANDS[new_band_number], 'main:new_band')
     await update_ui_page(_RADIO_DATA_PAGE, b'%s %s' % (radio_name, BANDS[new_band_number]), None)
     set_inhibit(1)
@@ -548,7 +572,7 @@ async def new_band(new_band_number):
 
 
 async def change_band_antenna(up=True):
-    global current_antenna_list_index
+    global antenna_request_tries, current_antenna_list_index
     logging.info(f'change_band_antenna(up={up})', 'main:change_band_antenna')
     if len(band_antennae) <= 1:
         return False
@@ -560,6 +584,7 @@ async def change_band_antenna(up=True):
         current_antenna_list_index -= 1
         if current_antenna_list_index < 0:
             current_antenna_list_index = len(band_antennae) - 1
+    antenna_request_tries = 0  # fresh budget for this manually selected antenna
     await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
     return True
 
@@ -593,7 +618,7 @@ async def show_ui_page(page):
 
 
 async def msg_loop(q):
-    global antenna_bands, antenna_names, band_antennae, broadcast_receiver_task, \
+    global antenna_bands, antenna_names, antenna_request_tries, band_antennae, broadcast_receiver_task, \
         current_antenna, current_antenna_list_index, current_antenna_name, current_band_number, \
         network_connected, radio_name, radio_power, receive_broadcasts, \
         switch_connected, switch_timeouts, udp_timeout_timer
@@ -693,12 +718,34 @@ async def msg_loop(q):
                 # kill msg_loop (the only consumer task).
                 payload = m1[1].decode('utf-8', 'replace').strip()
                 if http_status == _API_STATUS_TIMEOUT:
-                    switch_connected = False
-                    current_antenna = -1
-                    current_antenna_name = b'_Switch API Timeout_'
-                    #                       '12345678901234567890'
-                    await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
-                    set_inhibit(1)
+                    if current_antenna == requested_antenna and current_antenna >= 1:
+                        # the UDP broadcast already shows the antenna we asked for -- the
+                        # request likely succeeded but the response was slow.  do not inhibit.
+                        logging.info(f'api timed out but udp broadcast already shows antenna '
+                                     f'{requested_antenna} selected', 'main:msg_loop')
+                        display_antenna_name = current_antenna_name
+                        if len(band_antennae) > 1:
+                            display_antenna_name = b'%s + %i' % (current_antenna_name,
+                                                                 len(band_antennae) - 1)
+                        await update_ui_page(_RADIO_DATA_PAGE, None, display_antenna_name)
+                        set_inhibit(0)
+                    elif requested_antenna >= 1 and antenna_request_tries < _MAX_ANTENNA_REQUEST_RETRIES:
+                        # the switch has not confirmed the requested antenna; retry the call.
+                        antenna_request_tries += 1
+                        logging.warning(f'api timed out, antenna not confirmed by udp broadcast, '
+                                        f'retry {antenna_request_tries}/{_MAX_ANTENNA_REQUEST_RETRIES}',
+                                        'main:msg_loop')
+                        await update_ui_page(_RADIO_DATA_PAGE, None, b'Requesting Antenna')
+                        set_inhibit(1)
+                        await call_select_antenna_api(requested_antenna, (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
+                    else:
+                        # retries exhausted.  the periodic UDP status broadcast remains the
+                        # authority on whether the switch is alive, so switch_connected is left alone.
+                        current_antenna = -1
+                        current_antenna_name = b'_Switch API Timeout_'
+                        #                       '12345678901234567890'
+                        await update_ui_page(_RADIO_DATA_PAGE, None, current_antenna_name)
+                        set_inhibit(1)
                 elif http_status == _API_STATUS_ERROR or http_status == _API_STATUS_READ_ERROR:
                     switch_connected = False
                     current_antenna = -1
@@ -708,6 +755,7 @@ async def msg_loop(q):
                     set_inhibit(1)
                 elif http_status == HTTP_STATUS_OK:
                     logging.debug('antenna request was successful', 'main:msg_loop')
+                    antenna_request_tries = 0  # the request demonstrably worked; fresh budget
                     if receive_broadcasts is not None:
                         receive_broadcasts.invalidate()
 
@@ -723,6 +771,7 @@ async def msg_loop(q):
                         await update_ui_page(_RADIO_DATA_PAGE, None, b'')
                         if current_antenna_list_index < len(band_antennae) - 1:
                             current_antenna_list_index = current_antenna_list_index + 1
+                        antenna_request_tries = 0  # fresh budget for the next candidate antenna
                         await call_select_antenna_api(band_antennae[current_antenna_list_index] + 1,
                                                       (_MSG_ANTENNA_RESPONSE, (0, '')), msgq)
                 else:  # some other HTTP/status code...
@@ -799,7 +848,10 @@ async def msg_loop(q):
                                         logging.warning(f'invalid antenna band mask {antenna_mask} in udp response',
                                                         'main:msg_loop:_MSG_UDP_RESPONSE')
                                         set_inhibit(1)
-                                    elif MASKS[current_band_number] & antenna_mask:
+                                    elif (MASKS[current_band_number] & antenna_mask) or \
+                                            current_antenna == requested_antenna:
+                                        # the switch reports the antenna we asked for -- confirmation
+                                        # that the request was received and applied.
                                         set_inhibit(0)
                                         if len(band_antennae) > 1:
                                             # display_antenna_name = f'{current_antenna_name} + {len(band_antennae) - 1}'
