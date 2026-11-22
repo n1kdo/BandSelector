@@ -4,7 +4,7 @@
 
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2026 J. B. Otterson N1KDO.'
-__version__ = '0.1.1'  # 2026-11-11
+__version__ = '0.1.2'  # 2026-11-19
 
 #
 # Copyright 2026 J. B. Otterson N1KDO.
@@ -90,7 +90,7 @@ class CachedConfigData:
         except Exception as ex:
             logging.exception('failed to write configuration data to %s' % self._config_file_name,
                               'cached_config_data:_write_config_data()',
-                              ex)
+                              exc_info=ex)
             try:
                 os.remove(tmp_file)  # don't leave a partial tmp behind
             except OSError:

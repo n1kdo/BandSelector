@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026  J. B. Otterson N1KDO.'
-__version__ = '0.10.18'  # 2026-11-04
+__version__ = '0.10.19'  # 2026-11-19
 
 #
 # Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
@@ -141,7 +141,7 @@ class PicowNetwork:
             try:
                 await self._message_func(self._message, self._status)
             except Exception as exc:
-                logging.exception('set_message failed', 'PicowNetwork:set_message', exc)
+                logging.exception('set_message failed', 'PicowNetwork:set_message', exc_info=exc)
 
     async def _connect(self) -> None:
         network.country('US')
@@ -160,7 +160,7 @@ class PicowNetwork:
             self._wlan.config(pm=self._wlan.PM_NONE)  # disable power save, this is a server.
             await sleep(0.1)
             logging.debug('Starting setup WLAN...1', 'PicowNetwork:connect_to_network')
-            logging.info(b'  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network (new)')
+            logging.info('  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network (new)')
             # wlan.deinit turns off the onboard LED because it is connected to the CYW43
             # turn it on again.
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
@@ -168,7 +168,7 @@ class PicowNetwork:
             try:
                 if self._long_messages:
                     await self.set_message(b'Setting hostname %s' % self._hostname_bytes)
-                logging.info(b'  Setting hostname "%s"' % self._hostname, 'PicowNetwork:connect_to_network')
+                logging.info('  Setting hostname "%s"' % self._hostname, 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
             except ValueError:
                 if self._long_messages:
@@ -193,10 +193,10 @@ class PicowNetwork:
                         self._default_ssid = self._default_ssid + suffix
             self._wlan.config(ssid=self._default_ssid, key=self._default_secret, security=security)
             self._wlan.active(True)
-            logging.info(b'  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network')
-            logging.info(b'  ssid=%s' % self._wlan.config("ssid"), 'PicowNetwork:connect_to_network')
-            logging.debug(b'  key=%s' % self._default_secret, 'PicowNetwork:connect_to_network')
-            logging.info(b'  ipconfig addr4=%s' % self._wlan.ipconfig("addr4")[0], 'PicowNetwork:connect_to_network')
+            logging.info('  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network')
+            logging.info('  ssid=%s' % self._wlan.config("ssid"), 'PicowNetwork:connect_to_network')
+            logging.debug('  key=%s' % self._default_secret, 'PicowNetwork:connect_to_network')
+            logging.info('  ipconfig addr4=%s' % self._wlan.ipconfig("addr4")[0], 'PicowNetwork:connect_to_network')
             self._connected = True
         else:
             if self._long_messages:
@@ -210,7 +210,7 @@ class PicowNetwork:
             try:
                 if self._long_messages:
                     await self.set_message(b'Setting hostname\n%s' % self._hostname_bytes)
-                logging.info(b'...setting hostname "%s"' % self._hostname, 'PicowNetwork:connect_to_network')
+                logging.info('...setting hostname "%s"' % self._hostname, 'PicowNetwork:connect_to_network')
                 network.hostname(self._hostname)
                 logging.debug('Connecting to WLAN...5', 'PicowNetwork:connect_to_network')
             except ValueError:
@@ -221,7 +221,7 @@ class PicowNetwork:
                 logging.error('Failed to set hostname.', 'PicowNetwork:connect_to_network')
             self._wlan.active(True)
             await sleep(0.1)
-            logging.info(b'  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network (new)')
+            logging.info('  wlan.active()=%d' % self._wlan.active(), 'PicowNetwork:connect_to_network (new)')
             # wlan.deinit turns off the onboard LED because it is connected to the CYW43
             # turn it on again.
             onboard = machine.Pin('LED', machine.Pin.OUT, value=0)
@@ -229,41 +229,41 @@ class PicowNetwork:
             logging.debug('Connecting to WLAN...6', 'PicowNetwork:connect_to_network')
             await sleep(0.1)
 
-            logging.info(b'scanning for best signal for SSID "%s"' % self._ssid, 'PicowNetwork:connect_to_network')
+            logging.info('scanning for best signal for SSID "%s"' % self._ssid, 'PicowNetwork:connect_to_network')
             # scan ssid option is not documented.  Using it here to reduce the result set size.
             # see https://github.com/micropython/micropython/blob/master/extmod/network_cyw43.c#L192
             try:
                 scan_results = self._wlan.scan(ssid=self._ssid, passive=True)
             except OSError as ose:
                 scan_results = []
-                logging.exception('WiFi scan() failed', 'PicowNetwork:connect_to_network', ose)
+                logging.exception('WiFi scan() failed', 'PicowNetwork:connect_to_network', exc_info=ose)
             logging.debug('Connecting to WLAN...7', 'PicowNetwork:connect_to_network')
             bssid = None
             best_rssi = -100
             for result in scan_results:
                 scan_ssid = result[0].decode('utf-8', 'replace')
-                scan_bssid = b''.join([b'%02x' % b for b in result[1]])
+                scan_bssid = ''.join(['%02x' % b for b in result[1]])
                 scan_channel = result[2]
                 scan_rssi = result[3]
                 scan_security = result[4]
                 scan_hidden = result[5]
                 if logging.should_log(logging.DEBUG):
                     logging.debug(
-                        b'Found SSID "%s", BSSID "%s", channel %d, RSSI %d, security %d, hidden %d' % (scan_ssid,
-                                                                                                       scan_bssid,
-                                                                                                       scan_channel,
-                                                                                                       scan_rssi,
-                                                                                                       scan_security,
-                                                                                                       scan_hidden),
+                        'Found SSID "%s", BSSID "%s", channel %d, RSSI %d, security %d, hidden %d' % (scan_ssid,
+                                                                                                     scan_bssid,
+                                                                                                     scan_channel,
+                                                                                                     scan_rssi,
+                                                                                                     scan_security,
+                                                                                                     scan_hidden),
                         'PicowNetwork:connect_to_network')
                 if scan_ssid == self._ssid:
                     if scan_rssi > best_rssi:
                         best_rssi = scan_rssi
                         bssid = result[1]
             if bssid is not None:
-                bssid_bytes = b''.join([b'%02x' % b for b in bssid])
-                logging.info(b'Found best RSSI for SSID "%s" on BSSID "%s" RSSI %d'
-                             % (self._ssid, bssid_bytes, best_rssi), 'PicowNetwork:connect_to_network')
+                bssid_str = ''.join(['%02x' % b for b in bssid])
+                logging.info('Found best RSSI for SSID "%s" on BSSID "%s" RSSI %d'
+                             % (self._ssid, bssid_str, best_rssi), 'PicowNetwork:connect_to_network')
             else:
                 logging.warning('cannot find SSID in scan', 'PicowNetwork:connect_to_network')
 
@@ -283,7 +283,7 @@ class PicowNetwork:
                 self._wlan.ipconfig(dhcp4=True)
                 logging.info('...configuring network with DHCP', 'PicowNetwork:connect_to_network')
             else:
-                logging.info(b'...configuring network with %s' % self._wlan.ipconfig("addr4"),
+                logging.info('...configuring network with %s' % self._wlan.ipconfig("addr4"),
                              'PicowNetwork:connect_to_network')
 
             connect_timeout = 15
@@ -296,28 +296,28 @@ class PicowNetwork:
                 else:
                     self._wlan.connect(self._ssid, self._secret)
             except OSError as ose:
-                logging.exception('got exception on wlan.connect', 'PicowNetwork:connect_to_network', ose)
-            logging.info(b'...connecting to "%s"...' % self._ssid, 'PicowNetwork:connect_to_network')
-            # logging.debug(b'...using secret "%s"...' % self._secret, 'PicowNetwork:connect_to_network')
+                logging.exception('got exception on wlan.connect', 'PicowNetwork:connect_to_network', exc_info=ose)
+            logging.info('...connecting to "%s"...' % self._ssid, 'PicowNetwork:connect_to_network')
+            # logging.debug('...using secret "%s"...' % self._secret, 'PicowNetwork:connect_to_network')
             last_wl_status = -9
             while connect_timeout > 0:
                 try:
                     wl_status = self._wlan.status()
                 except OSError as ose:
-                    logging.exception('wlan.status() failed', 'PicowNetwork:connect_to_network', ose)
+                    logging.exception('wlan.status() failed', 'PicowNetwork:connect_to_network', exc_info=ose)
                     wl_status = network.STAT_CONNECT_FAIL
                     break
-                logging.debug(b'wlan.status()=%d' % wl_status, 'PicowNetwork:connect_to_network')
+                logging.debug('wlan.status()=%d' % wl_status, 'PicowNetwork:connect_to_network')
                 if wl_status != last_wl_status:
                     last_wl_status = wl_status
                     st = self.network_status_map.get(wl_status) or b'undefined'
-                    logging.info(b'...network status: %d %s' % (wl_status, st), 'PicowNetwork:connect_to_network')
+                    logging.info('...network status: %d %s' % (wl_status, st.decode()), 'PicowNetwork:connect_to_network')
                 if wl_status < 0 or wl_status >= 3:
                     break
                 connect_timeout -= 1
                 await sleep(1)
             if wl_status != network.STAT_GOT_IP:
-                logging.warning(b'...network connect failed: %d, pausing...' % wl_status,
+                logging.warning('...network connect failed: %d, pausing...' % wl_status,
                                 'PicowNetwork:connect_to_network')
                 if self._long_messages:
                     await self.set_message(b'Error %d\n%s' % (wl_status, st), -wl_status)
@@ -328,7 +328,7 @@ class PicowNetwork:
                     await sleep(1)
                     self._wlan.deinit()
                 except OSError as exc:
-                    logging.exception('wlan deinit failed', 'PicowNetwork:connect_to_network', exc)
+                    logging.exception('wlan deinit failed', 'PicowNetwork:connect_to_network', exc_info=exc)
                 self._wlan = None
                 await sleep(10)  # pause after connection failure.
                 return
@@ -341,7 +341,7 @@ class PicowNetwork:
         self._gateway = ifconfig[2]
         self._dns_server = ifconfig[3]
         logging.info(
-            b'...connected: %s, %s, %s, %s' % (self._ip_address, self._netmask, self._gateway, self._dns_server),
+            '...connected: %s, %s, %s, %s' % (self._ip_address, self._netmask, self._gateway, self._dns_server),
             'PicowNetwork:connect_to_network')
         self._connected = True
 
@@ -388,17 +388,18 @@ class PicowNetwork:
                 try:
                     data = self._wlan.config(k)
                     if isinstance(data, str):
-                        logging.info(b'WLAN.config("%s")="%s"' % (k, data), 'PicowNetwork:status')
+                        logging.info('WLAN.config("%s")="%s"' % (k, data), 'PicowNetwork:status')
                     elif isinstance(data, int):
-                        logging.info(b'WLAN.config("%s")=%d' % (k, data), 'PicowNetwork:status')
+                        logging.info('WLAN.config("%s")=%d' % (k, data), 'PicowNetwork:status')
                     elif isinstance(data, bytes):
-                        mac = b':'.join([b'%02x' % b for b in data])
-                        logging.info(b'WLAN.config("%s")=%s' % (k, mac), 'PicowNetwork:status')
+                        mac = ':'.join(['%02x' % b for b in data])
+                        logging.info('WLAN.config("%s")=%s' % (k, mac), 'PicowNetwork:status')
                     else:
-                        logging.info(b'WLAN.config("%s")=%s %s' % (k, data, type(data)), 'PicowNetwork:status')
+                        logging.info('WLAN.config("%s")=%s %s' % (k, data, type(data)), 'PicowNetwork:status')
 
                 except Exception as exc:
-                    logging.warning(b'%s: "%s"' % (exc, k), 'PicowNetwork:status')
+                    logging.exception('Could not get value for key "%s"' % k, 'PicowNetwork:status',
+                                      exc_info=exc)
         else:
             logging.warning('Network not initialized.', 'PicowNetwork:status')
 
@@ -411,7 +412,7 @@ class PicowNetwork:
                 self._connected = self._wlan is not None and \
                                   self._wlan.status() == network.STAT_GOT_IP
         except OSError as exc:
-            logging.exception('keepalive failed', 'PicowNetwork:keep_alive', exc)
+            logging.exception('keepalive failed', 'PicowNetwork:keep_alive', exc_info=exc)
             self._connected = False
 
     async def keep_alive(self):
@@ -423,7 +424,7 @@ class PicowNetwork:
                 self._refresh_connected()
 
                 if logging.should_log(logging.DEBUG):
-                    logging.debug(b'connected = %d' % self._connected, 'PicowNetwork.keepalive')
+                    logging.debug('connected = %d' % self._connected, 'PicowNetwork.keepalive')
 
                 if not self._connected and not self._connecting:
                     logging.warning('Not connected...  attempting network connect...', 'PicowNetwork:keep_alive')
@@ -431,7 +432,7 @@ class PicowNetwork:
                     try:
                         await self._connect()
                     except Exception as exc:
-                        logging.exception('network connect failed', 'PicowNetwork:keep_alive', exc)
+                        logging.exception('network connect failed', 'PicowNetwork:keep_alive', exc_info=exc)
                         self._connected = False
                     finally:
                         self._connecting = False
@@ -453,7 +454,7 @@ class PicowNetwork:
                             await self.set_message(b'NO NET', -1)
                 await sleep(30 if self._connected else 5)  # check every 30 seconds when connected, every 5 when not.
             except Exception as exc:
-                logging.exception('keep_alive loop error', 'PicowNetwork:keep_alive', exc)
+                logging.exception('keep_alive loop error', 'PicowNetwork:keep_alive', exc_info=exc)
         logging.info('keepalive exit', 'PicowNetwork.keepalive loop exit.')
 
     def get_message(self) -> bytes:
