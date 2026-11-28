@@ -3,7 +3,7 @@
 #
 __author__ = 'J. B. Otterson'
 __copyright__ = 'Copyright 2024, 2025, 2026  J. B. Otterson N1KDO.'
-__version__ = '0.10.19'  # 2026-11-19
+__version__ = '0.10.20'  # 2026-11-25
 
 #
 # Copyright 2024, 2025, 2026 J. B. Otterson N1KDO.
@@ -126,6 +126,9 @@ class PicowNetwork:
 
     def get_netmask(self):
         return self._netmask
+
+    def get_gateway(self):
+        return self._gateway
 
     def get_dns_servers(self):
         # tuple of dotted-quad strings (DHCP) or a single string (static config); None in AP mode
@@ -411,6 +414,16 @@ class PicowNetwork:
             else:
                 self._connected = self._wlan is not None and \
                                   self._wlan.status() == network.STAT_GOT_IP
+                if self._connected and self._is_dhcp:
+                    # refresh cached address info while connected so an IP change without a
+                    # disconnect event (e.g. DHCP lease renewal) reaches get_ip_address().
+                    ifconfig = self._wlan.ifconfig()
+                    if (ifconfig[0] != self._ip_address or ifconfig[1] != self._netmask or
+                            ifconfig[2] != self._gateway or ifconfig[3] != self._dns_server):
+                        self._ip_address = ifconfig[0]
+                        self._netmask = ifconfig[1]
+                        self._gateway = ifconfig[2]
+                        self._dns_server = ifconfig[3]
         except OSError as exc:
             logging.exception('keepalive failed', 'PicowNetwork:keep_alive', exc_info=exc)
             self._connected = False
